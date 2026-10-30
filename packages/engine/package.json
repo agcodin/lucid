@@ -1,0 +1,26 @@
+{
+  "name": "@lucid/engine",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker/harper.worker.ts",
+    "./claude": "./src/providers/claude.ts"
+  },
+  "dependencies": {
+    "harper.js": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.70.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Lucid testbed</title>
+  <style>
+    body { font: 15px/1.6 system-ui, sans-serif; margin: 24px; max-width: 860px; }
+    #ce { border: 1px solid #ccc; padding: 12px; border-radius: 8px; }
+    blockquote { border-left: 3px solid #ddd; margin: 1em 0; padding-left: 12px; }
+    ::highlight(lucid-correctness) { text-decoration: underline wavy #d2443c from-font; }
+    ::highlight(lucid-clarity) { text-decoration: underline #2f6f9e 2px; }
+    ::highlight(lucid-engagement) { text-decoration: underline dotted #a8700f 2px; }
+    ::highlight(lucid-delivery) { text-decoration: underline dashed #7a4fa3 2px; }
+    pre { background: #f5f3ef; padding: 12px; border-radius: 8px; overflow: auto; }
+  </style></head>
+  <body>
+    <h1>Offset mapping over nested contenteditable</h1>
+    <!-- Deliberately messy markup: nested inlines, a list, a blockquote, and a
+         hidden node, which is what a real editor's DOM looks like. -->
+    <div id="ce" contenteditable="true">
+      <p>In order to <b>facilitate</b> the <i>utilization</i> of the system, we made a decision.</p>
+      <p>The report was written by the committee. Its not clear whether or not it wont ship.</p>
+      <blockquote><p>I think that maybe we should <span>circle back</span> at the end of the day.</p></blockquote>
+      <ul><li>Their going to send alot of thigs.</li><li>Your probably right.</li></ul>
+      <p hidden>This paragraph is hidden and must not be indexed.</p>
+    </div>
+    <pre id="out">running…</pre>
+    <script type="module" src="/src/testbed.ts"></script>
+  </body>
+</html>

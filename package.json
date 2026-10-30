@@ -1,0 +1,23 @@
+{
+  "name": "lucid",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @lucid/web",
+    "build": "npm run build -w @lucid/web && npm run build -w @lucid/extension",
+    "build:ext": "npm run build -w @lucid/extension",
+    "bench": "tsx bench/bench.ts",
+    "typecheck": "tsc --noEmit -p packages/engine && tsc --noEmit -p apps/web",
+    "test": "tsx bench/apply.test.ts && tsx bench/confusions.test.ts",
+    "build:web": "npm run build -w @lucid/web"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15"
+  }
+}

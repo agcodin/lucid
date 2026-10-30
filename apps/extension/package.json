@@ -1,0 +1,9 @@
+{
+  "name": "@lucid/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs", "watch": "node build.mjs --watch" },
+  "dependencies": { "@lucid/engine": "*" },
+  "devDependencies": { "esbuild": "^0.24.0", "@types/chrome": "^0.0.280", "typescript": "^5.7.0" }
+}

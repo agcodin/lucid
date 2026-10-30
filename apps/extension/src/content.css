@@ -1,0 +1,19 @@
+/* Underlines, painted by the browser over ranges the engine registers.
+   No overlay element exists, so nothing needs repositioning when the host page
+   scrolls or reflows — which is the whole reason this is cheap. */
+::highlight(lucid-correctness) {
+  text-decoration: underline wavy #d2443c from-font;
+  text-decoration-skip-ink: none;
+}
+::highlight(lucid-clarity) {
+  text-decoration: underline #2f6f9e 2px;
+  text-decoration-skip-ink: none;
+}
+::highlight(lucid-engagement) {
+  text-decoration: underline dotted #a8700f 2px;
+  text-decoration-skip-ink: none;
+}
+::highlight(lucid-delivery) {
+  text-decoration: underline dashed #7a4fa3 2px;
+  text-decoration-skip-ink: none;
+}
