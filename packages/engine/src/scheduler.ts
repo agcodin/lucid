@@ -322,7 +322,19 @@ export class Lucid {
  * otherwise leave a doubled space or a space before punctuation, and a
  * replacement at the start of a sentence has to keep its capital.
  */
-export function applyReplacement(text: string, issue: Issue, replacementText: string): { text: string; cursor: number } {
+export interface TextEdit {
+  /** The span to replace, after whitespace and capitalization adjustment. */
+  start: number;
+  end: number;
+  /** What to put there. */
+  insert: string;
+  /** The whole document after the edit, for callers that want it. */
+  text: string;
+  /** Where the caret belongs afterwards. */
+  cursor: number;
+}
+
+export function applyReplacement(text: string, issue: Issue, replacementText: string): TextEdit {
   let start = issue.start;
   let end = issue.end;
   let insert = replacementText;
@@ -351,9 +363,15 @@ export function applyReplacement(text: string, issue: Issue, replacementText: st
       const rest = text.slice(end);
       const match = /^(\s*)([a-z])/.exec(rest);
       if (match) {
+        // Swallow the whitespace too and re-capitalize the next word, so the
+        // edit stays a single contiguous replacement.
         const at = end + match[1]!.length;
+        const capitalized = match[2]!.toUpperCase();
         return {
-          text: text.slice(0, start) + text.slice(end, at) + match[2]!.toUpperCase() + text.slice(at + 1),
+          start,
+          end: at + 1,
+          insert: text.slice(end, at) + capitalized,
+          text: text.slice(0, start) + text.slice(end, at) + capitalized + text.slice(at + 1),
           cursor: start,
         };
       }
@@ -362,7 +380,13 @@ export function applyReplacement(text: string, issue: Issue, replacementText: st
     }
   }
 
-  return { text: text.slice(0, start) + insert + text.slice(end), cursor: start + insert.length };
+  return {
+    start,
+    end,
+    insert,
+    text: text.slice(0, start) + insert + text.slice(end),
+    cursor: start + insert.length,
+  };
 }
 
 /** Index of the last non-space character before `offset`, or -1 if there is none. */

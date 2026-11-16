@@ -59,3 +59,20 @@ test('a replacement mid-sentence keeps its lowercase form', () => {
   const text = 'We will utilize the tool.';
   assert.equal(applyReplacement(text, span(text, 'utilize'), 'use').text, 'We will use the tool.');
 });
+
+test('the returned edit span reproduces the returned text', () => {
+  // Callers apply this as a ranged edit so the browser's undo stack survives,
+  // so the span and the full text have to agree.
+  for (const [text, phrase, replacement] of cases) {
+    const edit = applyReplacement(text, span(text, phrase), replacement);
+    const rebuilt = text.slice(0, edit.start) + edit.insert + text.slice(edit.end);
+    assert.equal(rebuilt, edit.text, `${text} -> ${phrase}`);
+  }
+});
+
+test('the edit span stays inside the document', () => {
+  for (const [text, phrase, replacement] of cases) {
+    const edit = applyReplacement(text, span(text, phrase), replacement);
+    assert.ok(edit.start >= 0 && edit.end <= text.length && edit.start <= edit.end);
+  }
+});

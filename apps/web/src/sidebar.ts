@@ -1,5 +1,10 @@
 import type { Category, EngineState, Issue } from '@lucid/engine';
 
+/** Shown in shortcut hints. Mac uses the command key, everything else Ctrl. */
+const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+  ? '\u2318'
+  : 'Ctrl';
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   correctness: 'Correctness',
   clarity: 'Clarity',
@@ -87,6 +92,16 @@ export class Sidebar {
         </dl>
       </div>
 
+      <div class="panel legend">
+        <h3>Underlines</h3>
+        ${(Object.keys(CATEGORY_LABELS) as Category[])
+          .map((category) => `<div class="legend-row">
+            <span class="legend-mark ${category}">abc</span>
+            <span class="legend-text"><strong>${CATEGORY_LABELS[category]}</strong>${CATEGORY_BLURB[category]}</span>
+          </div>`)
+          .join('')}
+      </div>
+
       <div class="panel perf">
         <h3>Engine</h3>
         <dl class="metrics">
@@ -141,6 +156,9 @@ export class Sidebar {
               .join('')}</div>`
           : ''}
         ${issue.detail ? `<p class="card-detail">${escapeHtml(stripTags(issue.detail))}</p>` : ''}
+        ${issue.id === this.activeId && issue.replacements.length > 0
+          ? `<div class="shortcut"><kbd>${MOD}</kbd><kbd>&crarr;</kbd> accept &middot; <kbd>${MOD}</kbd><kbd>.</kbd> next</div>`
+          : ''}
         <footer>
           <span class="rule">${escapeHtml(issue.rule)}</span>
           <span class="actions">
@@ -152,8 +170,19 @@ export class Sidebar {
     `;
   }
 
-  /** Move the active outline without rebuilding the list, so clicks feel instant. */
+  /**
+   * Move the active outline without rebuilding the list, so clicks feel
+   * instant. The shortcut hint belongs to the active card, so it moves too.
+   */
   private renderActiveOnly(): void {
+    if (!this.state) return;
+    const active = this.root.querySelector('.card.active');
+    const next = this.root.querySelector(`.card[data-id="${CSS.escape(this.activeId ?? '')}"]`);
+    // Rebuilding is only needed when the hint has to move between cards.
+    if (active !== next) {
+      this.render(this.state, this.text);
+      return;
+    }
     for (const card of this.root.querySelectorAll<HTMLElement>('.card')) {
       card.classList.toggle('active', card.dataset.id === this.activeId);
     }

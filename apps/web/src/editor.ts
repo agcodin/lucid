@@ -72,6 +72,39 @@ export class Editor {
     this.root.addEventListener('keyup', () => this.reportCaretIssue());
   }
 
+  /**
+   * Replace one span of the document, routed through the browser's own text
+   * insertion so the native undo stack records it.
+   *
+   * `setText` rebuilds the DOM, which discards undo history — after accepting a
+   * suggestion the user could not press Cmd+Z to get their wording back. A
+   * ranged edit keeps the document a normal sequence of typed changes.
+   *
+   * Returns false when the span could not be resolved, so the caller can fall
+   * back to a whole-document replacement.
+   */
+  replaceRange(start: number, end: number, insert: string): boolean {
+    const range = this.rangeFor(start, end, this.buildIndex());
+    if (!range) return false;
+
+    const selection = window.getSelection();
+    if (!selection) return false;
+    this.root.focus();
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    // execCommand is deprecated but remains the only way to insert text into a
+    // contenteditable through the undo stack; a direct DOM mutation bypasses it.
+    const inserted = insert === ''
+      ? document.execCommand('delete')
+      : document.execCommand('insertText', false, insert);
+    if (!inserted) return false;
+
+    this.text = this.readText();
+    this.onInput(this.text);
+    return true;
+  }
+
   /** Replace the whole document. Used for seeding and for applying a rewrite. */
   setText(text: string, cursor?: number): void {
     this.text = text;

@@ -1,4 +1,5 @@
 export { Lucid, applyReplacement } from './scheduler.js';
+export type { TextEdit } from './scheduler.js';
 export type { EngineState, EngineStats, LucidOptions } from './scheduler.js';
 
 export { toBlocks, toSentences, tokenize } from './segment.js';

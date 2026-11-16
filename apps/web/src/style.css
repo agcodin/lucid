@@ -347,3 +347,29 @@ body {
   .editor { font-size: 17px; }
   .tagline { display: none; }
 }
+
+/* --- Shortcut hints and legend ------------------------------------------ */
+
+.shortcut {
+  margin-top: 8px; font-size: 11px; color: var(--faint);
+  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+}
+kbd {
+  font-family: var(--sans); font-size: 10.5px; line-height: 1;
+  padding: 3px 5px; border-radius: 4px;
+  border: 1px solid var(--border); border-bottom-width: 2px;
+  background: var(--surface); color: var(--muted);
+}
+
+.legend-row { display: flex; align-items: baseline; gap: 9px; margin-bottom: 8px; }
+.legend-row:last-child { margin-bottom: 0; }
+.legend-mark {
+  font-family: var(--serif); font-size: 13px; flex: none; width: 30px;
+  text-decoration-skip-ink: none;
+}
+.legend-mark.correctness { text-decoration: underline wavy var(--correctness) from-font; }
+.legend-mark.clarity { text-decoration: underline var(--clarity) 2px; }
+.legend-mark.engagement { text-decoration: underline dotted var(--engagement) 2px; }
+.legend-mark.delivery { text-decoration: underline dashed var(--delivery) 2px; }
+.legend-text { font-size: 11.5px; color: var(--faint); line-height: 1.4; }
+.legend-text strong { display: block; color: var(--text); font-size: 12.5px; font-weight: 580; }

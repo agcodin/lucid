@@ -24,6 +24,7 @@ app.innerHTML = `
     <div class="topbar-actions">
       <button id="fix-all" class="btn">Fix all spelling &amp; grammar</button>
       <button id="settings-toggle" class="btn ghost">Claude rewrites</button>
+      <button id="reset" class="btn ghost" title="Replace the draft with the sample text">Reset</button>
     </div>
   </header>
 
@@ -52,7 +53,10 @@ let provider: RemoteProvider | undefined;
 
 const editor = new Editor({
   root: document.querySelector<HTMLElement>('#editor')!,
-  onInput: (text) => engine.setText(text),
+  onInput: (text) => {
+    engine.setText(text);
+    scheduleSave(text);
+  },
   onIssueFocus: (issue) => setActive(issue?.id),
 });
 
@@ -97,9 +101,13 @@ function setActive(id: string | undefined): void {
 }
 
 function apply(issue: Issue, replacement: string): void {
-  const next = applyReplacement(editor.getText(), issue, replacement);
+  const edit = applyReplacement(editor.getText(), issue, replacement);
   setActive(undefined);
-  editor.setText(next.text, next.cursor);
+  // Prefer the ranged edit, which the browser records on its undo stack. The
+  // whole-document path is the fallback for a span we could not resolve.
+  if (!editor.replaceRange(edit.start, edit.end, edit.insert)) {
+    editor.setText(edit.text, edit.cursor);
+  }
   editor.focus();
 }
 
@@ -113,16 +121,20 @@ document.querySelector('#fix-all')!.addEventListener('click', () => {
     .filter((issue) => issue.category === 'correctness' && issue.replacements.length === 1)
     .sort((a, b) => b.start - a.start);
 
-  let text = editor.getText();
+  // Each edit is applied through the editor so the whole batch is one run of
+  // undoable steps rather than a single document swap.
   let applied = 0;
   let lastEnd = Number.POSITIVE_INFINITY;
   for (const issue of fixes) {
     if (issue.end > lastEnd) continue; // Skip anything overlapping a fix already applied.
-    text = applyReplacement(text, issue, issue.replacements[0]!.text).text;
+    const edit = applyReplacement(editor.getText(), issue, issue.replacements[0]!.text);
+    if (!editor.replaceRange(edit.start, edit.end, edit.insert)) {
+      editor.setText(edit.text, edit.cursor);
+    }
     lastEnd = issue.start;
     applied++;
   }
-  if (applied > 0) editor.setText(text, 0);
+  if (applied > 0) editor.focus();
 });
 
 // --- Claude rewrites (opt-in) ---------------------------------------------
@@ -167,14 +179,81 @@ try {
   // Private browsing with site data blocked. Rewrites simply stay unavailable.
 }
 
-editor.setText(SAMPLE);
+// --- Persistence ---------------------------------------------------------
+//
+// Autosave to localStorage so a reload does not lose the draft. The write is
+// debounced because `onInput` fires on every keystroke and localStorage writes
+// are synchronous on the main thread.
+
+const DRAFT_STORAGE = 'lucid.draft';
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleSave(text: string): void {
+  if (saveTimer !== undefined) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      if (text.trim().length === 0) localStorage.removeItem(DRAFT_STORAGE);
+      else localStorage.setItem(DRAFT_STORAGE, text);
+    } catch {
+      // Storage blocked or full. The draft simply is not kept.
+    }
+  }, 600);
+}
+
+function loadDraft(): string | undefined {
+  try {
+    return localStorage.getItem(DRAFT_STORAGE) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+document.querySelector('#reset')!.addEventListener('click', () => {
+  editor.setText(SAMPLE);
+  editor.focus();
+});
+
+editor.setText(loadDraft() ?? SAMPLE);
 editor.focus();
 
-// Expose the transform kinds the rewrite bar offers, for the keyboard shortcut.
+/** Move the selection to the next issue after the caret, wrapping at the end. */
+function gotoNextIssue(): void {
+  if (!latest || latest.issues.length === 0) return;
+  const current = latest.issues.findIndex((issue) => issue.id === activeId);
+  const next = latest.issues[(current + 1) % latest.issues.length];
+  if (!next) return;
+  setActive(next.id);
+  editor.reveal(next);
+}
+
 window.addEventListener('keydown', (event) => {
-  if (!(event.metaKey || event.ctrlKey) || event.key !== 'j') return;
-  event.preventDefault();
-  rewriteBar.trigger('rewrite' satisfies TransformKind);
+  const modifier = event.metaKey || event.ctrlKey;
+
+  if (event.key === 'Escape') {
+    setActive(undefined);
+    return;
+  }
+  if (!modifier) return;
+
+  switch (event.key) {
+    case 'Enter': {
+      // Accept the active suggestion's first replacement.
+      const issue = latest?.issues.find((candidate) => candidate.id === activeId);
+      const replacement = issue?.replacements[0];
+      if (!issue || !replacement) return;
+      event.preventDefault();
+      apply(issue, replacement.text);
+      break;
+    }
+    case '.':
+      event.preventDefault();
+      gotoNextIssue();
+      break;
+    case 'j':
+      event.preventDefault();
+      rewriteBar.trigger('rewrite' satisfies TransformKind);
+      break;
+  }
 });
 
 // Dev-only handle, for measuring the engine from the console. Stripped from a
