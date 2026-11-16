@@ -3,8 +3,8 @@
 A writing checker that does what Grammarly does, without the lag that makes the
 browser extension painful to leave installed.
 
-Everything runs on your machine. Spelling, grammar, clarity, wordiness, tone and
-readability never touch the network. Full-sentence rewrites are the one
+Everything runs on your own machine, so spelling, grammar, clarity, wordiness,
+tone and readability never touch the network. Full-sentence rewrites are the one
 exception, and they only run when you ask for one.
 
 ## Why the usual approach is slow
@@ -12,51 +12,90 @@ exception, and they only run when you ask for one.
 Three things make a browser writing checker expensive, and all three are
 avoidable now in a way they were not a few years ago.
 
-**It re-checks the whole document.** Harper lints 20,000 characters in about
-53ms. Doing that on every keystroke is a dropped frame every time you type.
-Lucid splits the document into paragraph blocks, hashes each one, and re-lints
-only the block you actually edited. Editing the last paragraph of a 116,000
-character document costs the same as editing a short note.
+The first is that it re-checks the whole document. Harper lints 20,000
+characters in about 53ms, and doing that on every keystroke is a dropped frame
+every time you type. Lucid splits the document into paragraph blocks, hashes
+each one, and re-lints only the block you actually edited. Editing the last
+paragraph of a 116,000 character document costs the same as editing a short
+note.
 
-**It paints underlines with DOM elements.** An overlay of positioned spans has
+The second is how the underlines are painted. An overlay of positioned spans has
 to be re-measured against the text on every keystroke, every scroll and every
 reflow, which is why typing in Gmail or a Slate-based editor gets sticky. The
 CSS Custom Highlight API reached Baseline in March 2026, and it hands that job
 back to the browser. Lucid registers Ranges and the browser paints them, so no
 wrapper nodes exist and nothing needs measuring.
 
-**It loads a copy of itself into every tab.** Harper's WebAssembly binary is
-about 20MB. The extension pays for it once for the whole browser, in a single
-offscreen document, rather than once per tab.
+The third is that the checker is loaded into every tab. Harper's WebAssembly
+binary runs to about 20MB, and the extension pays for it once for the whole
+browser, in a single offscreen document, rather than once per tab.
 
 ## Measured
 
-Taken on this machine with `npm run bench` and in-browser timings. The document
-is 11,800 words with 3,200 live suggestions, which is well past anything you
-would actually write in one sitting.
+Taken with `npm run bench` and in-browser timings on an 11,800 word document
+carrying 2,800 live suggestions, which is well past anything you would write in
+one sitting.
 
 | | naive | Lucid |
 |---|---|---|
 | Grammar pass per edit, 116k chars | 313ms | **1.5ms** |
-| Underline repaint, 3,200 issues | 65ms | **1.1ms** |
-| Rules tier per keystroke | — | **0.3ms** |
-| Total main-thread work per keystroke (p95) | — | **2.4ms** |
+| Underline repaint, thousands of issues | 65ms | **1.4ms** |
+| Rules tier per keystroke | n/a | **0.5ms** |
+| Total main-thread work per keystroke (p95) | n/a | **2.4ms** |
 
-The 313ms and 65ms columns are not strawmen. They are what this same code did
-before the block cache and the offset index went in, measured the same way.
+Both figures in the first column come from this same code, measured the same
+way, before the block cache and the offset index went in.
 
 One frame at 60Hz is 16.7ms, so the whole per-keystroke path fits inside a
 single frame with room to spare. The grammar pass runs in a worker and never
-touches the main thread at all.
+touches the main thread. The first edit after a cold load is slower while the
+JIT warms up, and settles within a second of typing.
+
+## How accurate is it
+
+A checker that cries wolf is worse than no checker, so every rule has a measured
+firing rate. `npm run corpus` fetches 164,000 words of copy-edited Wikipedia
+prose and reports how often each rule fires on writing that an editor has
+already passed.
+
+Correctness rules claim an outright mistake, so on text like this they should
+stay quiet. They find zero flags in all 164,433 words. Clarity and engagement
+rules are advisory and will fire on any real text, so the signal there is a rule
+firing far more often than its peers, which usually means it is too loose.
+
+That harness found five real bugs that reading the code had not.
+
+- The sentence splitter kept one set of abbreviations, and that set contained
+  ordinary English words. `The cat sat. The dog ran.` became a single sentence,
+  and so did anything after `us`, `no`, `wed` or `sun`. Every sentence-level
+  rule downstream was working from merged sentences.
+- `clarity:nominalization` fired 2,036 times, once every 36 words, on plain
+  nouns like `thickness` and `precipitation`. It matched suffixes and kept an
+  allowlist of exceptions, which can never cover the noun vocabulary of English.
+  It now uses an explicit list gated on the weak `the <noun> of` construction,
+  and fires 112 times, all of them genuine.
+- `delivery:all-caps` flagged acronym runs and roman numerals, with spans
+  stretching across whole sentences. It now needs an unbroken run of three
+  capitalized words, and finds nothing in the corpus.
+- `confusion:its` flagged `its true significance`, which is a correct
+  possessive. Adjectives are gone from the follower list, because an adjective
+  cannot tell a possessive from a contraction without knowing what comes next.
+- `at the end of the day` sat in two phrase tables, so whichever was indexed
+  second could never fire.
+
+Two more came out of the test suite. `syllables('beautiful')` returned 5 because
+vowel runs were capped at two characters, and `analyzeTone` labelled any
+four-word sentence `direct` by reading tone off its length alone.
 
 ## What it checks
 
-The four categories match the ones Grammarly users already know.
+The four categories match the ones Grammarly users already know, and each can be
+switched off, along with seven individual rule groups.
 
 | Category | What it covers | Where it comes from |
 |---|---|---|
 | Correctness | Spelling, grammar, agreement, punctuation, capitalization | Harper (936 rules) plus a confusion pack |
-| Clarity | Wordiness, passive voice, nominalizations, long sentences, double negatives | 260 phrase rules plus pattern rules |
+| Clarity | Wordiness, passive voice, nominalizations, long sentences, double negatives | 259 phrase rules plus pattern rules |
 | Engagement | Filler, weak intensifiers, clichés, adverb pileups, repeated sentence openers | Phrase and pattern rules |
 | Delivery | Hedging, apologetic openers, shouting, exclamation pileups | Phrase and pattern rules |
 
@@ -69,14 +108,14 @@ common errors as real words. It leaves `wont`, `cant`, `thats` and `Its not`
 alone, since each is a word in its own right. Those are among the mistakes
 people make most, so Lucid adds context-gated rules for them. Each one fires on
 the construction rather than the word, so `the dog wagged its tail` and `the
-well was deep` stay untouched. `npm test` checks that.
+well was deep` stay untouched.
 
 ## How it is put together
 
 Four tiers, ordered by how much they cost and how soon you need them.
 
 ```
-Tier 0  rules       ~0.3ms   every keystroke, main thread, on the edited block
+Tier 0  rules       ~0.5ms   every keystroke, main thread, on the edited block
 Tier 1  Harper      ~1.5ms   debounced 120ms, in a worker, edited block only
 Tier 2  analysis    ~3ms     on idle, whole document
 Tier 3  Claude      ~1s      only when you click a rewrite
@@ -89,12 +128,15 @@ a fast typist never queues up behind themselves.
 ```
 packages/engine/      the whole checker, shared by both apps
   segment.ts          paragraph blocks and sentence splitting, with offsets
-  scheduler.ts        incremental scheduling, caching, cancellation
+  scheduler.ts        incremental scheduling, caching, cancellation, filtering
   tiers/              phrase tables, pattern rules, confusions, tone, readability
-  worker/             Harper in a worker, multi-client
+  worker/             Harper in a worker, serving several clients at once
   providers/claude.ts optional rewrites
+  test/               62 assertions
 apps/web/             standalone editor
 apps/extension/       MV3 extension, one shared engine per browser
+  test/               8 assertions over the message routing
+corpus/               false-positive harness
 ```
 
 ## Running it
@@ -109,6 +151,10 @@ npm run dev
 
 That serves the editor on http://localhost:5181. Harper's WebAssembly loads in
 the background in about a second, and the rules tier works before it arrives.
+Your draft autosaves, so a reload keeps it.
+
+Cmd+Enter accepts the suggestion you are on, Cmd+. walks to the next one, and
+Cmd+Z undoes an accepted suggestion the way it undoes your own typing.
 
 ```bash
 npm run build:ext
@@ -120,6 +166,7 @@ That writes an unpacked extension to `apps/extension/dist`. Load it through
 ```bash
 npm test
 npm run bench
+npm run corpus
 ```
 
 ## Rewrites
@@ -145,9 +192,15 @@ holds the key server-side instead of shipping it to the page.
   its panel for textareas, it just cannot underline them. Contenteditable
   fields, which is where most real writing happens, work everywhere the Custom
   Highlight API does.
-- The extension's message plumbing has not been exercised in a real browser
-  yet. The engine, the offset mapping over nested contenteditable markup, and
-  the build output are all verified. Loading it unpacked is the next step.
+- The extension's routing between content script, service worker and offscreen
+  document is covered by tests against a stub of the Chrome APIs, and the offset
+  mapping over nested contenteditable markup is verified in a browser. It has
+  still never been loaded unpacked in a real Chrome, which is the one gap left.
+- The false-positive corpus is a single genre. Encyclopedic prose uses passive
+  voice and long sentences far more than an email does, so the rates for those
+  two rules are an upper bound rather than a typical reading. Tuning them
+  further against this corpus alone would make the checker worse for the writing
+  people actually bring to it.
 - Plagiarism detection is not here and will not be. It needs a licensed index of
   the web, which is not something a local checker can do.
 - Tone detection is a lexicon-and-feature model rather than a neural one. It is
