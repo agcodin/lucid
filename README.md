@@ -119,8 +119,15 @@ have pasted that string into the document. Wikipedia never says `constructor`,
 so one genre on its own could never have caught it, and the lookup tables are
 Maps now.
 
-Running the content script in a real page found four more, which the next
-section covers.
+Running the content script in a real page found four more. `new OpaqueRange(...)`
+throws, because the global exists but is not constructible, and since the throw
+escaped the engine's update callback it killed the whole attachment rather than
+just the underlines. Opening the panel showed an empty card. Applying a fix in a
+contenteditable did nothing, because `execCommand` only acts on the focused
+editable and clicking the panel moves focus into its shadow root. And `dispose`
+sent a global teardown to a worker the extension shares across every tab, which
+would have disposed the linter and cleared the block cache for all of them, so
+every blur would have cost every other tab a 20MB reload.
 
 ## What it checks
 
@@ -167,11 +174,12 @@ packages/engine/      the whole checker, shared by both apps
   tiers/              phrase tables, pattern rules, confusions, tone, readability
   worker/             Harper in a worker, serving several clients at once
   providers/claude.ts optional rewrites
-  test/               62 assertions
+  test/               76 assertions
 apps/web/             standalone editor
+  exttest.html        the extension's content script, in a host page
 apps/extension/       MV3 extension, one shared engine per browser
   test/               8 assertions over the message routing
-corpus/               false-positive harness
+corpus/               false-positive harness, two genres
 ```
 
 ## Running it
@@ -196,7 +204,10 @@ npm run build:ext
 ```
 
 That writes an unpacked extension to `apps/extension/dist`. Load it through
-`chrome://extensions` with developer mode on and `Load unpacked`.
+`chrome://extensions` with developer mode on and `Load unpacked`. It attaches
+to whichever field you are typing in, and the gear in its panel holds the same
+category toggles and dictionary the editor has, stored in `chrome.storage.sync`
+so they follow you between devices.
 
 ```bash
 npm test
@@ -222,16 +233,17 @@ holds the key server-side instead of shipping it to the page.
 ## Honest limits
 
 - Harper is English only, so Lucid is too.
-- Underlines inside `<textarea>` need the OpaqueRange API, which today is
-  Chromium 152 and up. Everywhere else the extension still lists suggestions in
-  its panel for textareas, it just cannot underline them. Contenteditable
+- Underlines inside a `<textarea>` need `createValueRange`, which today is
+  Chromium only. Everywhere else the extension still lists suggestions in its
+  panel for those fields, it just cannot underline them. Contenteditable
   fields, which is where most real writing happens, work everywhere the Custom
   Highlight API does.
 - The extension has still never been loaded unpacked in a real Chrome, which is
   the one gap left. Its routing is covered against a stub of the Chrome APIs,
-  and the content script itself now runs in a real host page against a real
-  Harper worker, over a textarea, an input, a password field, a readonly field,
-  a non-editable div and a contenteditable with nested markup.
+  and the content script itself runs in a real host page against a real Harper
+  worker, over a textarea, an input, a password field, a readonly field, a
+  non-editable div and a contenteditable with nested markup. That harness is
+  `npm run dev` then `/exttest.html?run=1`.
 - Both corpus genres are written for a reader who does not know the writer.
   Neither is email, which is most of what people put through a checker, so the
   passive and sentence-length rates are an upper bound rather than a typical
