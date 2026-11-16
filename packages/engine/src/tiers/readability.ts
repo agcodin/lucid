@@ -3,26 +3,39 @@ import type { Readability } from '../types.js';
 
 /**
  * Syllable count by vowel groups, with the corrections that matter most for
- * Flesch scores. Exact syllabification needs a pronunciation dictionary; the
- * error here is a fraction of a grade level and costs nothing to compute.
+ * Flesch scores.
+ *
+ * Vowel runs are matched greedily. Capping them at two characters splits
+ * "beautiful" into ea-u-i-u and then a separate triphthong correction added
+ * another, giving 5 for a three-syllable word. Greedy runs read "eau" as the
+ * one glide it is.
+ *
+ * Exact syllabification needs a pronunciation dictionary. The residual error
+ * here is a fraction of a grade level and costs nothing to compute.
  */
 export function syllables(word: string): number {
   const w = word.toLowerCase().replace(/[^a-z]/g, '');
   if (w.length === 0) return 0;
   if (w.length <= 3) return 1;
 
-  let body = w
-    // Silent trailing -e, but not in "-le" after a consonant ("table" is two).
-    .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '')
+  // Silent trailing -e, -es and -ed, but never the "-le" of "table", where the
+  // e carries its own syllable.
+  const body = w
+    .replace(/(?:[^laeiouy]es|[^aeiouy]ed|[^laeiouy]e)$/, '')
     .replace(/^y/, '');
 
-  const groups = body.match(/[aeiouy]{1,2}/g);
+  const groups = body.match(/[aeiouy]+/g);
   let count = groups ? groups.length : 1;
 
-  // Vowel pairs that are pronounced separately rather than as one glide.
-  if (/[^aeiou](?:ia|io|ua|uo|eo|ea[rl])/.test(w)) count++;
-  if (/[aeiou]{3}/.test(w)) count++;
-  if (/(?:ism|ist|tion|sion)$/.test(w)) count = Math.max(count, 2);
+  // Vowel pairs pronounced as two syllables rather than one glide, as in
+  // "media", "violet" and "duo". The "-tion"/"-sion" ending is excluded, since
+  // it is one syllable, and "eo" is excluded because "people" and "leopard"
+  // outnumber the hiatus cases.
+  count += (w.match(/[^aeiouy](?:ia|io|ua|uo)/g) ?? []).length;
+  count -= (w.match(/[tsc]io[nu]/g) ?? []).length;
+  // "area", "idea", "create": an "ea" ending a stem is two syllables. Tested on
+  // the stem, so a stripped silent e ("create" -> "crea") still counts.
+  if (/[^aeiouy]ea$/.test(body)) count++;
 
   return Math.max(1, count);
 }

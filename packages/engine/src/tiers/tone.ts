@@ -98,6 +98,11 @@ export function analyzeTone(text: string): Tone {
 
   // Structural evidence, normalized so long documents do not swamp short ones.
   const words = Math.max(tokens.length, 1);
+
+  // Below this, structure says nothing. A four-word sentence is short because
+  // it is a fragment, not because the writer is being direct, and reading tone
+  // off that produces a confident label from no evidence.
+  const ENOUGH_FOR_STRUCTURE = 12;
   const per100 = (n: number): number => (n / words) * 100;
 
   const contractions = (text.match(/\b\w+['’](?:t|s|re|ve|ll|d|m)\b/g) ?? []).length;
@@ -108,12 +113,14 @@ export function analyzeTone(text: string): Tone {
   const longWords = tokens.filter((t) => t.text.length >= 9).length;
   const avgSentence = sentences.length > 0 ? words / sentences.length : words;
 
-  add('informal', per100(contractions) * 0.6 + per100(exclamations) * 1.2);
-  add('friendly', per100(exclamations) * 0.5 + per100(secondPerson) * 0.3 + per100(questions) * 0.4);
-  add('formal', per100(longWords) * 0.4 + Math.max(0, avgSentence - 18) * 0.3);
-  add('direct', per100(secondPerson) * 0.25 + Math.max(0, 14 - avgSentence) * 0.2);
-  add('analytical', per100((text.match(/\d/g) ?? []).length) * 0.15);
-  if (firstPerson === 0 && words > 40) add('formal', 1.5);
+  if (words >= ENOUGH_FOR_STRUCTURE) {
+    add('informal', per100(contractions) * 0.6 + per100(exclamations) * 1.2);
+    add('friendly', per100(exclamations) * 0.5 + per100(secondPerson) * 0.3 + per100(questions) * 0.4);
+    add('formal', per100(longWords) * 0.4 + Math.max(0, avgSentence - 18) * 0.3);
+    add('direct', per100(secondPerson) * 0.25 + Math.max(0, 14 - avgSentence) * 0.2);
+    add('analytical', per100((text.match(/\d/g) ?? []).length) * 0.15);
+    if (firstPerson === 0 && words > 40) add('formal', 1.5);
+  }
 
   const formalScore = scores.get('formal') ?? 0;
   const informalScore = scores.get('informal') ?? 0;

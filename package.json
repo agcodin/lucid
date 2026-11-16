@@ -13,8 +13,9 @@
     "build:ext": "npm run build -w @lucid/extension",
     "bench": "tsx bench/bench.ts",
     "typecheck": "tsc --noEmit -p packages/engine && tsc --noEmit -p apps/web",
-    "test": "tsx bench/apply.test.ts && tsx bench/confusions.test.ts",
-    "build:web": "npm run build -w @lucid/web"
+    "test": "node --import tsx --test packages/engine/test/*.test.ts",
+    "build:web": "npm run build -w @lucid/web",
+    "corpus": "node corpus/fetch.mjs && tsx corpus/analyze.ts"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
