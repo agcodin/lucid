@@ -79,6 +79,39 @@ Clarity and engagement rules are advisory and will fire on any real text, so the
 signal there is a rule firing far harder in one genre than the other, or far
 harder than its peers.
 
+Silence is only half the question, because a checker that finds nothing scores
+perfectly on it. `npm run recall` answers the other half. It takes clean
+sentences from the same corpus, puts a known mistake into one at a known
+position, and asks whether anything fires over that span and whether the
+suggested fix puts the original back. Twenty kinds of mistake, 636 of them.
+
+| | |
+|---|---|
+| Errors caught | **100%** |
+| Caught with the right fix | **96%** |
+| False positives on 192,381 words of edited prose | **0** |
+
+The fix is applied through the same code the editor uses, so the figure is what
+a user would get from clicking the suggestion rather than a raw splice. An
+earlier version of the harness compared against a splice and scored correct
+fixes at 70%, because deleting `very` from `is very useful` left a double space
+that the real path tidies up.
+
+Four gaps came out of it. `your writing a regular expression` was missed because
+the rule only knew a fixed list of words after `your`, where the tell is a
+gerund with an object after it. `you loose many advantages` was missed because
+the rule looked only at what followed `loose`, not at the subject before it.
+`its often useful` was missed because adverbs had been stripped from the `its`
+rule along with the adjectives, although an adverb cannot follow a possessive at
+all. And Harper misses `they is` about one time in seven, and when it does catch
+it, it usually suggests changing the pronoun rather than the verb, so pronoun
+agreement is a rule here now.
+
+That last one introduced a duplicate: `They is` drew a card from both tiers for
+the same mistake. Overlapping correctness findings are deduplicated, which the
+other categories are deliberately spared, since a wordy phrase inside an
+over-long sentence is two useful observations rather than one repeated.
+
 That harness found five real bugs that reading the code had not.
 
 - The sentence splitter kept one set of abbreviations, and that set contained
@@ -213,6 +246,7 @@ so they follow you between devices.
 npm test
 npm run bench
 npm run corpus
+npm run recall
 ```
 
 ## Rewrites

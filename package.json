@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit -p packages/engine && tsc --noEmit -p apps/web && tsc --noEmit -p apps/extension",
     "test": "node --import tsx --test packages/engine/test/*.test.ts apps/extension/test/*.test.ts",
     "build:web": "npm run build -w @lucid/web",
-    "corpus": "node corpus/fetch.mjs && node corpus/fetch-mdn.mjs && tsx corpus/analyze.ts"
+    "corpus": "node corpus/fetch.mjs && node corpus/fetch-mdn.mjs && tsx corpus/analyze.ts",
+    "recall": "tsx corpus/recall.ts",
+    "accuracy": "tsx corpus/analyze.ts && tsx corpus/recall.ts"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

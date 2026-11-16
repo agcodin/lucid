@@ -121,3 +121,56 @@ test('every suggested replacement is a plain string', () => {
     }
   }
 });
+
+test('pronoun and be-verb agreement is caught', () => {
+  const expected: [string, string][] = [
+    ['They is ready.', 'they are'],
+    ['We was late.', 'we were'],
+    ['He are leaving.', 'he is'],
+    ['You is correct.', 'you are'],
+    ['I are going.', 'i am'],
+    ['It are broken.', 'it is'],
+  ];
+  for (const [text, fix] of expected) {
+    const found = correctness(text).find((issue) => issue.rule === 'confusion:be-agreement');
+    assert.ok(found, `nothing flagged on ${text}`);
+    assert.equal(found.fix?.toLowerCase(), fix, text);
+  }
+});
+
+test('correct agreement and the subjunctive are left alone', () => {
+  for (const text of [
+    'They are ready.', 'We were late.', 'He is leaving.', 'I am going.',
+    'If it were possible, we would.',
+    'He talks as though he were in charge.',
+    'I wish it were simpler.',
+  ]) {
+    assert.deepEqual(correctness(text).filter((i) => i.rule === 'confusion:be-agreement'), [], text);
+  }
+});
+
+test('the letter i is not read as the pronoun', () => {
+  // Both of these appear in real technical and scientific writing, and both
+  // were flagged before the pronoun test was added.
+  for (const text of [
+    'The reaction center of photosystem I are replaced by transfer.',
+    'The sizes are i and n, and i is uniform random from 0 to n.',
+    'Section I is the introduction.',
+  ]) {
+    assert.deepEqual(correctness(text).filter((i) => i.rule === 'confusion:be-agreement'), [], text);
+  }
+});
+
+test('"it\'s good practice to" is caught as the idiom it is', () => {
+  for (const text of ['Its good practice to close it.', 'Its common practice to do so.', 'Its a bad idea to skip it.']) {
+    assert.ok(correctness(text).some((issue) => issue.rule === 'confusion:its'), text);
+  }
+  // "its time to live" is a real possessive in networking writing.
+  assert.deepEqual(correctness('The packet and its time to live are shown.'), []);
+});
+
+test('adverbs after "its" mark the contraction', () => {
+  for (const text of ['Its often useful.', 'Its almost universally accepted.', 'Its clearly wrong.']) {
+    assert.ok(correctness(text).some((issue) => issue.rule === 'confusion:its'), text);
+  }
+});

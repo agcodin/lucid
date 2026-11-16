@@ -249,8 +249,8 @@ export class Lucid {
       for (const issue of slot.rules) if (this.shows(issue)) out.push(issue);
       for (const issue of slot.harper) if (this.shows(issue)) out.push(issue);
     }
-    out.sort((a, b) => a.start - b.start || a.end - b.end);
-    return out;
+    out.sort((a, b) => a.start - b.start || b.end - a.end);
+    return dedupeCorrectness(out);
   }
 
   private shows(issue: Issue): boolean {
@@ -486,6 +486,34 @@ function matchesRule(rule: string, disabled: string): boolean {
   if (!rule.startsWith(disabled)) return false;
   const boundary = rule[disabled.length];
   return boundary === '/' || boundary === '-';
+}
+
+/**
+ * Drop correctness issues that overlap one already kept.
+ *
+ * The rule tier covers errors Harper's dictionary lets through, and the two
+ * sometimes find the same one: "They is" draws both a `confusion:be-agreement`
+ * over the pair and a `harper:Agreement` over the verb. Those are one mistake
+ * and belong in one card.
+ *
+ * Only correctness is deduped. An overlap in the other categories is usually
+ * two different observations about the same words, such as a wordy phrase
+ * inside a sentence that is also too long, and both are worth showing.
+ */
+function dedupeCorrectness(issues: Issue[]): Issue[] {
+  const out: Issue[] = [];
+  let lastEnd = -1;
+
+  for (const issue of issues) {
+    if (issue.category !== 'correctness') {
+      out.push(issue);
+      continue;
+    }
+    if (issue.start < lastEnd) continue; // Covered by one already kept.
+    out.push(issue);
+    lastEnd = issue.end;
+  }
+  return out;
 }
 
 /** Index of the last non-space character before `offset`, or -1 if there is none. */

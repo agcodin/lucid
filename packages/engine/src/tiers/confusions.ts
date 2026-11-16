@@ -47,12 +47,93 @@ const ITS_FOLLOWERS = new Set([
   'going', 'getting', 'becoming', 'unclear', 'unlikely',
 ]);
 
+/**
+ * Adverbs cannot follow a possessive, so "its often useful" has to be the
+ * contraction. This is separate from the list above because it is a rule about
+ * a part of speech rather than about particular words.
+ */
+const ADVERBS = new Set([
+  'often', 'rarely', 'seldom', 'usually', 'generally', 'typically', 'normally',
+  'commonly', 'certainly', 'clearly', 'obviously', 'apparently', 'perhaps',
+  'hardly', 'barely', 'mostly', 'largely', 'entirely', 'completely',
+  'absolutely', 'simply', 'merely', 'essentially', 'basically', 'actually',
+  'truly', 'indeed', 'therefore', 'thus', 'sometimes', 'frequently',
+  'almost', 'nearly', 'virtually', 'universally', 'widely', 'highly',
+  'relatively', 'surprisingly', 'remarkably', 'increasingly', 'particularly',
+  'especially', 'currently', 'originally', 'finally', 'eventually', 'recently',
+  'previously', 'arguably', 'undoubtedly', 'unfortunately',
+]);
+
+/**
+ * Nouns that only appear after "its" as part of an idiom meaning "it is", as
+ * in "it's good practice to" and "it's a bad idea to".
+ *
+ * "time" is deliberately absent: "its time to live" is a real possessive in
+ * networking writing, which is exactly the kind of text this runs on.
+ */
+const IDIOM_NOUNS = new Set(['practice', 'idea', 'habit', 'custom', 'policy', 'convention', 'wisdom']);
+
+/**
+ * Adjectives that take an infinitive after them. "its preferable to" cannot be
+ * a possessive, because the "to" leaves the adjective with no noun to modify.
+ */
+const ADJECTIVES_BEFORE_TO = new Set([
+  'preferable', 'important', 'useful', 'possible', 'impossible', 'necessary',
+  'essential', 'better', 'best', 'easier', 'harder', 'easy', 'hard',
+  'difficult', 'common', 'standard', 'typical', 'tempting', 'wise', 'safe',
+  'good', 'bad', 'helpful', 'sensible', 'reasonable', 'crucial', 'vital',
+  'critical', 'worth', 'enough', 'rare', 'usual', 'unusual', 'fine',
+]);
+
+/**
+ * Pronouns paired with the wrong form of "be". Harper catches most of these
+ * but not all, and when it does its suggestion often changes the pronoun
+ * rather than the verb.
+ */
+const BE_AGREEMENT = new Map<string, string>([
+  ['i|are', 'am'], ['i|is', 'am'], ['i|were', 'was'],
+  ['you|is', 'are'], ['you|was', 'were'],
+  ['he|are', 'is'], ['she|are', 'is'], ['it|are', 'is'],
+  ['he|were', 'was'], ['she|were', 'was'], ['it|were', 'was'],
+  ['we|is', 'are'], ['they|is', 'are'],
+  ['we|was', 'were'], ['they|was', 'were'],
+]);
+
+/**
+ * Conjunctions a subject pronoun can follow. Used to tell the pronoun "I" from
+ * the letter, which appears constantly in technical and scientific writing as
+ * a designation ("photosystem I") or a variable ("and i is uniform random").
+ */
+const CLAUSE_STARTERS = new Set([
+  'and', 'or', 'but', 'that', 'if', 'when', 'while', 'because', 'so', 'then',
+  'yet', 'nor', 'although', 'though', 'since', 'before', 'after', 'as',
+]);
+
+/**
+ * Before these, "were" is the subjunctive and correct, as in "if it were
+ * possible" and "as though he were leaving".
+ */
+const SUBJUNCTIVE_CUES = new Set(['if', 'though', 'wish', 'wishes', 'wished', 'as', 'whether', 'lest']);
+
+/** Subjects and modals after which "loose" has to be the verb "lose". */
+const LOSE_SUBJECTS = new Set([
+  'you', 'we', 'they', 'i', 'he', 'she', 'it', 'to', 'will', 'would', 'can',
+  'could', 'may', 'might', 'should', 'must', 'never', 'always', 'not',
+  "don't", "won't", "didn't", "doesn't", 'dont', 'wont',
+]);
+
 /** Words after which a bare "your" is nearly always "you're". */
 const YOURE_FOLLOWERS = new Set([
   'welcome', 'right', 'wrong', 'correct', 'not', 'already', 'probably',
   'definitely', 'absolutely', 'going', 'getting', 'doing', 'looking', 'making',
   'being', 'always', 'never', 'still', 'just', 'the', 'a', 'an', 'in',
   'about', 'free', 'able', 'sure', 'ready', 'good', 'great', 'better', 'best',
+]);
+
+/** Words that mark the thing an -ing verb acts on, as opposed to a noun's own verb. */
+const GERUND_OBJECTS = new Set([
+  'a', 'an', 'the', 'to', 'it', 'them', 'this', 'that', 'these', 'those',
+  'some', 'any', 'my', 'his', 'her', 'our', 'their', 'me', 'us', 'him',
 ]);
 
 /** Comparatives after which "then" should be "than". */
@@ -93,9 +174,25 @@ export function matchConfusions(tokens: Token[], hits: PatternHit[]): void {
 
     if (!next) continue;
 
-    if (word === 'its' && ITS_FOLLOWERS.has(next.lower)) {
+    if (word === 'its' && (ITS_FOLLOWERS.has(next.lower) || ADVERBS.has(next.lower))) {
       push(hits, token, 'Did you mean "it\'s"?', [matchCase(token.text, "it's")], 'confusion:its',
         '"Its" is the possessive. Before a verb or an article you want "it is", shortened to "it\'s".');
+      continue;
+    }
+    // "its preferable to ..." — the infinitive leaves the adjective nothing to
+    // modify, so this cannot be a possessive.
+    // "its good practice to ..." — an idiom with an optional adjective in it.
+    const idiomAt = IDIOM_NOUNS.has(next.lower) ? i + 1
+      : IDIOM_NOUNS.has(tokens[i + 2]?.lower ?? '') ? i + 2
+      : undefined;
+    if (word === 'its' && idiomAt !== undefined && tokens[idiomAt + 1]?.lower === 'to') {
+      push(hits, token, 'Did you mean "it\'s"?', [matchCase(token.text, "it's")], 'confusion:its',
+        'This is the idiom "it is good practice to", which takes the contraction.');
+      continue;
+    }
+    if (word === 'its' && ADJECTIVES_BEFORE_TO.has(next.lower) && tokens[i + 2]?.lower === 'to') {
+      push(hits, token, 'Did you mean "it\'s"?', [matchCase(token.text, "it's")], 'confusion:its',
+        'A possessive "its" needs a noun after it. Here the sentence means "it is".');
       continue;
     }
     if (word === "it's" && next.lower === 'own') {
@@ -103,7 +200,11 @@ export function matchConfusions(tokens: Token[], hits: PatternHit[]): void {
         '"It\'s" means "it is". The possessive has no apostrophe.');
       continue;
     }
-    if (word === 'your' && YOURE_FOLLOWERS.has(next.lower)) {
+    // "your writing a regular expression" — a gerund followed by an object is
+    // a verb, where "your writing is good" is a noun and stays possessive.
+    const gerundObject = next.lower.endsWith('ing') && next.lower.length > 5
+      && tokens[i + 2] !== undefined && GERUND_OBJECTS.has(tokens[i + 2]!.lower);
+    if (word === 'your' && (YOURE_FOLLOWERS.has(next.lower) || gerundObject)) {
       push(hits, token, 'Did you mean "you\'re"?', [matchCase(token.text, "you're")], 'confusion:youre',
         '"Your" is the possessive. Here the sentence needs "you are".');
       continue;
@@ -113,7 +214,29 @@ export function matchConfusions(tokens: Token[], hits: PatternHit[]): void {
         '"Their" is the possessive. "There is" and "there are" introduce something.');
       continue;
     }
-    if (word === 'loose' && LOSE_FOLLOWERS.has(next.lower)) {
+    const previous = tokens[i - 1];
+
+    const agreement = BE_AGREEMENT.get(`${word}|${next.lower}`);
+    if (agreement !== undefined && isSubjectPronoun(token, previous)) {
+      // "if it were possible" is the subjunctive, not a mistake.
+      const subjunctive = next.lower === 'were'
+        && previous !== undefined && SUBJUNCTIVE_CUES.has(previous.lower);
+      if (!subjunctive) {
+        hits.push({
+          category: 'correctness',
+          rule: 'confusion:be-agreement',
+          start: token.start,
+          end: next.end,
+          title: `"${token.text} ${next.text}" should be "${token.text} ${agreement}"`,
+          detail: `"${token.text}" takes "${agreement}".`,
+          replacements: [{ text: `${token.text} ${matchCase(next.text, agreement)}` }],
+        });
+        i++;
+        continue;
+      }
+    }
+
+    if (word === 'loose' && (LOSE_FOLLOWERS.has(next.lower) || (previous !== undefined && LOSE_SUBJECTS.has(previous.lower)))) {
       push(hits, token, 'Did you mean "lose"?', ['lose'], 'confusion:loose-lose',
         '"Loose" is the opposite of tight. "Lose" is the verb.');
       continue;
@@ -128,6 +251,18 @@ export function matchConfusions(tokens: Token[], hits: PatternHit[]): void {
         '"Then" is about time. Comparisons take "than".');
     }
   }
+}
+
+/**
+ * Whether this token is the pronoun rather than the letter.
+ *
+ * "I" is the only one that needs the test. It is always capitalized, and as a
+ * subject it opens a clause, where the letter sits inside a phrase.
+ */
+function isSubjectPronoun(token: Token, previous: Token | undefined): boolean {
+  if (token.lower !== 'i') return true;
+  if (token.text !== 'I') return false;
+  return previous === undefined || CLAUSE_STARTERS.has(previous.lower);
 }
 
 function push(hits: PatternHit[], token: Token, title: string, replacements: string[], rule: string, detail: string): void {

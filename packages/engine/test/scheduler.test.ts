@@ -419,3 +419,42 @@ test('a client with its own worker still disposes it', async () => {
   engine.dispose();
   assert.equal(worker.sent.at(-1)!.type, 'dispose');
 });
+
+test('one mistake found by both tiers is shown once', async () => {
+  const { engine, worker, states } = makeEngine();
+  worker.autoReply = false;
+  engine.setText('They is ready.');
+  await settle();
+
+  // The rule tier flags "They is"; Harper flags "is". Both are the same
+  // mistake, so only one card should reach the UI.
+  const rulesIssue = states.at(-1)!.issues.find((issue) => issue.rule === 'confusion:be-agreement')!;
+  assert.ok(rulesIssue, 'expected the agreement rule to fire');
+
+  worker.onmessage?.({
+    data: {
+      type: 'blockLints', gen: 1, blockHash: 'x', ms: 1,
+      issues: [{
+        id: 'h:1', category: 'correctness', tier: 'harper', rule: 'harper:Agreement',
+        start: rulesIssue.start + 5, end: rulesIssue.end,
+        title: 'overlapping', replacements: [{ text: 'are' }],
+      }],
+    },
+  } as MessageEvent<FromWorker>);
+  await settle();
+
+  const correctness = states.at(-1)!.issues.filter((issue) => issue.category === 'correctness');
+  assert.equal(correctness.length, 1, correctness.map((i) => i.rule).join(', '));
+});
+
+test('overlapping clarity issues are both kept', async () => {
+  const { engine, states } = makeEngine();
+  // A wordy phrase inside a sentence that is also too long: two different
+  // observations about the same words, and both are worth showing.
+  engine.setText(`In order to ship it, ${Array(34).fill('word').join(' ')}.`);
+  await settle();
+  const rules = states.at(-1)!.issues.map((issue) => issue.rule);
+  assert.ok(rules.some((rule) => rule.startsWith('clarity:wordy/')), rules.join(', '));
+  assert.ok(rules.includes('clarity:sentence-long'), rules.join(', '));
+  engine.dispose();
+});
