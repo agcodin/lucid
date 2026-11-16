@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Lucid extension harness</title>
+  <link rel="stylesheet" href="/../extension/src/content.css" />
+  <style>
+    body { font: 15px/1.6 system-ui, sans-serif; margin: 24px; max-width: 880px; }
+    section { margin-bottom: 22px; }
+    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: #666; margin: 0 0 8px; }
+    textarea, input, .ce { width: 100%; font: inherit; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+    textarea { height: 80px; }
+    .ce { min-height: 60px; }
+    pre { background: #f5f3ef; padding: 12px; border-radius: 8px; white-space: pre-wrap; }
+  </style></head>
+  <body>
+    <h1>Extension content script, in a host page</h1>
+
+    <section><h2>textarea</h2>
+      <textarea id="ta">In order to ship, we utilize it. Its not ready and it wont work.</textarea></section>
+
+    <section><h2>input type=text</h2>
+      <input id="inp" type="text" value="I think that maybe its fine." /></section>
+
+    <section><h2>input type=password (must be ignored)</h2>
+      <input id="pw" type="password" value="hunter2" /></section>
+
+    <section><h2>readonly textarea (must be ignored)</h2>
+      <textarea id="ro" readonly>In order to ship, we utilize it.</textarea></section>
+
+    <section><h2>contenteditable, nested markup</h2>
+      <div id="ce" class="ce" contenteditable="true">
+        <p>In order to <b>facilitate</b> the <i>utilization</i> of the system, we made a decision.</p>
+        <ul><li>Their going to send alot of thigs.</li></ul>
+      </div></section>
+
+    <section><h2>non-editable div (must be ignored)</h2>
+      <div id="plain">Just some text that happens to be very wordy indeed.</div></section>
+
+    <pre id="out">running…</pre>
+    <script type="module" src="/src/exttest.ts"></script>
+  </body>
+</html>

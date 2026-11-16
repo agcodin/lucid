@@ -200,12 +200,19 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
         ignored.add(message.hash);
         break;
 
+      case 'release':
+        // One client is going away. Its cancellation state goes with it; the
+        // linter and the block cache are shared and stay.
+        currentGen.delete(message.source);
+        break;
+
       case 'dispose':
         await linter?.dispose();
         linter = undefined;
         ready = undefined;
         cache.clear();
         cacheOrigin.clear();
+        currentGen.clear();
         break;
     }
   } catch (error) {

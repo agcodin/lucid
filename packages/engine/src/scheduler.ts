@@ -83,6 +83,7 @@ export class Lucid {
   private gen = 0;
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
   private idleHandle: number | undefined;
+  private disposed = false;
   private emitScheduled = false;
   private emitFrame: number | undefined;
   private emitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -112,7 +113,7 @@ export class Lucid {
    * generation-stamped so superseded runs abandon themselves.
    */
   setText(text: string): void {
-    if (text === this.text) return;
+    if (this.disposed || text === this.text) return;
     this.text = text;
 
     const blocks = toBlocks(text);
@@ -205,6 +206,7 @@ export class Lucid {
   }
 
   private onWorkerMessage(message: FromWorker): void {
+    if (this.disposed) return; // A reply that outlived the caller's UI.
     switch (message.type) {
       case 'ready':
         this.stats.ready = true;
@@ -341,7 +343,7 @@ export class Lucid {
    * painted, and whichever fires first cancels the other.
    */
   private emit(): void {
-    if (this.emitScheduled) return;
+    if (this.disposed || this.emitScheduled) return;
     this.emitScheduled = true;
 
     const flush = (): void => {
@@ -364,15 +366,34 @@ export class Lucid {
   }
 
   private send(message: ToWorker): void {
+    // `dispose` and `release` are the one pair allowed through, since they are
+    // what announces the teardown.
+    if (this.disposed && message.type !== 'dispose' && message.type !== 'release') return;
     this.worker?.postMessage(message);
   }
 
+  /**
+   * Stop this engine and let go of the worker.
+   *
+   * Two things matter here. Late replies must not reach `onUpdate` after the
+   * caller has torn its UI down, or a destroyed attachment keeps rendering over
+   * a live one. And a client that shares the worker must not send the global
+   * teardown, which would dispose the linter and clear the block cache for
+   * every other client — in the extension that is every other tab, each then
+   * reloading 20MB of WebAssembly.
+   */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
     if (this.debounceTimer !== undefined) clearTimeout(this.debounceTimer);
     if (this.idleHandle !== undefined) cancelIdle(this.idleHandle);
     if (this.emitFrame !== undefined) cancelFrame(this.emitFrame);
     if (this.emitTimer !== undefined) clearTimeout(this.emitTimer);
-    this.send({ type: 'dispose' });
+
+    // A source means the worker serves several clients, so only this client's
+    // state is released.
+    this.send(this.source === undefined ? { type: 'dispose' } : { type: 'release', source: this.source });
   }
 }
 

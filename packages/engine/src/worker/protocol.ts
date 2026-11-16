@@ -29,6 +29,12 @@ export type ToWorker =
   /** Replace the custom dictionary outright, so a word can be taken back out. */
   | { type: 'setWords'; words: string[] }
   | { type: 'ignoreHash'; hash: string }
+  /**
+   * Drop one client's state. Sent instead of `dispose` when the worker is
+   * shared, because tearing the linter down would take it from every other
+   * client too.
+   */
+  | { type: 'release'; source: Source }
   | { type: 'dispose' };
 
 export type FromWorker =

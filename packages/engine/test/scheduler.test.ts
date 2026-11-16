@@ -360,3 +360,62 @@ test('a disabled rule does not silence an unrelated rule sharing its prefix', as
   assert.ok(states.at(-1)!.issues.some((issue) => issue.rule.startsWith('clarity:expletive')));
   engine.dispose();
 });
+
+test('a disposed engine ignores replies that arrive late', async () => {
+  const { engine, worker, states } = makeEngine();
+  worker.autoReply = false;
+  engine.setText('Alpha block here.');
+  await settle();
+  const count = states.length;
+
+  engine.dispose();
+  // A worker reply in flight when the caller tore its UI down must not land,
+  // or a destroyed view keeps rendering over a live one.
+  worker.reply(1, 'any-hash', 0);
+  worker.onmessage?.({ data: { type: 'ready', rules: 936, setupMs: 1 } } as MessageEvent<FromWorker>);
+  await settle();
+
+  assert.equal(states.length, count, 'no update should follow dispose');
+});
+
+test('a disposed engine stops responding to setText', async () => {
+  const { engine, worker, states } = makeEngine();
+  engine.setText('Alpha.');
+  await settle();
+  const count = states.length;
+  const linted = worker.linted.length;
+
+  engine.dispose();
+  engine.setText('Completely different text in order to ship.');
+  await settle();
+
+  assert.equal(states.length, count);
+  assert.equal(worker.linted.length, linted, 'no further linting should be requested');
+});
+
+test('a shared client releases itself instead of disposing the worker', async () => {
+  const worker = new FakeWorker();
+  const engine = new Lucid({
+    worker: worker as unknown as Worker,
+    debounceMs: 20,
+    source: '7',
+    onUpdate: () => undefined,
+  });
+  engine.setText('Alpha.');
+  await settle();
+
+  engine.dispose();
+  const last = worker.sent.at(-1)!;
+  // Sending the global teardown would dispose the linter and clear the block
+  // cache for every other tab sharing this worker.
+  assert.equal(last.type, 'release', `sent ${last.type}`);
+  assert.equal((last as { source: string }).source, '7');
+});
+
+test('a client with its own worker still disposes it', async () => {
+  const { engine, worker } = makeEngine();
+  engine.setText('Alpha.');
+  await settle();
+  engine.dispose();
+  assert.equal(worker.sent.at(-1)!.type, 'dispose');
+});

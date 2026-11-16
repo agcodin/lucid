@@ -34,9 +34,20 @@ function isEditable(node: EventTarget | null): node is Field {
   return node.isContentEditable;
 }
 
-/** Underlines inside `<textarea>` need OpaqueRange, which only Chromium has. */
-const OPAQUE_RANGE: (new (node: Node, start: number, end: number) => AbstractRange) | undefined =
-  (window as unknown as { OpaqueRange?: new (node: Node, start: number, end: number) => AbstractRange }).OpaqueRange;
+/**
+ * Underlines inside a `<textarea>` or `<input>` need an OpaqueRange, which
+ * Chromium creates through `createValueRange` on the field itself.
+ *
+ * `OpaqueRange` is on `window` but is not constructible: `new OpaqueRange(...)`
+ * throws "Illegal constructor". Detecting the global and then constructing it
+ * threw on every paint, and because the throw escaped the engine's update
+ * callback it killed the whole attachment rather than just the underlines.
+ */
+type ValueRangeField = { createValueRange(start: number, end: number): AbstractRange };
+
+function supportsValueRange(field: Field): field is Field & ValueRangeField {
+  return typeof (field as Partial<ValueRangeField>).createValueRange === 'function';
+}
 
 const HIGHLIGHTS_SUPPORTED = typeof CSS !== 'undefined' && 'highlights' in CSS;
 
@@ -76,7 +87,14 @@ class Attachment {
 
   private onUpdate(state: EngineState): void {
     this.issues = state.issues;
-    this.paint();
+    // Underlines are the optional half. A browser quirk while building ranges
+    // must not stop the panel from listing the suggestions, and must not throw
+    // back into the engine's update callback, which would end the attachment.
+    try {
+      this.paint();
+    } catch (error) {
+      console.warn('[lucid] could not paint underlines:', error);
+    }
     this.panel.render(state, this);
   }
 
@@ -91,9 +109,16 @@ class Attachment {
     }
 
     if (this.isTextarea) {
-      if (!OPAQUE_RANGE) return; // No underlines here; the panel still lists everything.
+      // No underlines without createValueRange; the panel still lists everything.
+      if (!supportsValueRange(this.field)) return;
+      const length = (this.field as HTMLTextAreaElement).value.length;
       for (const issue of this.issues) {
-        const range = new OPAQUE_RANGE(this.field, issue.start, issue.end);
+        // Offsets can lag the field's value, because linting is debounced, and
+        // createValueRange throws when they run past the end.
+        const start = Math.min(issue.start, length);
+        const end = Math.min(issue.end, length);
+        if (end <= start) continue;
+        const range = this.field.createValueRange(start, end);
         CSS.highlights.get(`lucid-${issue.category}`)?.add(range as unknown as Range);
       }
       return;
@@ -118,14 +143,38 @@ class Attachment {
       Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(this.field, next.text);
       this.field.setSelectionRange(next.cursor, next.cursor);
     } else {
-      // Replace through the selection so the page's own undo stack records it.
-      const index = buildTextIndex(this.field as HTMLElement);
+      const host = this.field as HTMLElement;
+      const index = buildTextIndex(host);
       const range = rangeFor(index, issue.start, issue.end);
-      if (!range) return;
+      if (!range) {
+        // The span could not be resolved against the host's current DOM,
+        // usually because the page changed under us between linting and the
+        // click. Saying so beats the fix silently doing nothing.
+        console.warn('[lucid] could not locate the text to replace', {
+          rule: issue.rule, start: issue.start, end: issue.end, textLength: index.text.length,
+        });
+        return;
+      }
+
+      // Replace through the selection so the page's own undo stack records it.
+      // execCommand only acts on the focused editable, and clicking the panel
+      // moves focus into its shadow root, so focus has to come back first.
+      host.focus();
       const selection = window.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);
-      document.execCommand('insertText', false, replacement);
+
+      const inserted = replacement === ''
+        ? document.execCommand('delete')
+        : document.execCommand('insertText', false, replacement);
+
+      if (!inserted) {
+        // Some hosts block execCommand. Editing the range directly loses the
+        // page's undo entry, which is worse than keeping it but far better
+        // than the fix silently doing nothing.
+        range.deleteContents();
+        if (replacement !== '') range.insertNode(document.createTextNode(replacement));
+      }
     }
 
     this.field.dispatchEvent(new Event('input', { bubbles: true }));
@@ -150,6 +199,8 @@ class Panel {
   private readonly shadow: ShadowRoot;
   private readonly body: HTMLElement;
   private open = false;
+  /** The last update, so opening the panel can fill the list straight away. */
+  private last: { state: EngineState; attachment: Attachment } | undefined;
 
   constructor() {
     const host = document.createElement('div');
@@ -169,16 +220,21 @@ class Panel {
     this.shadow.querySelector('.badge')!.addEventListener('click', () => {
       this.open = !this.open;
       (this.shadow.querySelector('.card') as HTMLElement).hidden = !this.open;
+      // The list is only built while the panel is open, so opening it has to
+      // fill it now rather than wait for the next edit.
+      if (this.open && this.last) this.render(this.last.state, this.last.attachment);
     });
   }
 
   hide(): void {
     this.body.hidden = true;
     this.open = false;
+    this.last = undefined;
     (this.shadow.querySelector('.card') as HTMLElement).hidden = true;
   }
 
   render(state: EngineState, attachment: Attachment): void {
+    this.last = { state, attachment };
     this.body.hidden = false;
     const count = state.issues.length;
     this.shadow.querySelector('.n')!.textContent = String(count);
