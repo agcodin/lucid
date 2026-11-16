@@ -97,9 +97,10 @@ earlier version of the harness compared against a splice and scored correct
 fixes at 70%, because deleting `very` from `is very useful` left a double space
 that the real path tidies up.
 
-Four gaps came out of it. `your writing a regular expression` was missed because
-the rule only knew a fixed list of words after `your`, where the tell is a
-gerund with an object after it. `you loose many advantages` was missed because
+Four real gaps came out of that run. `your writing a regular expression` was
+missed because
+the rule only knew a fixed list of words after `your`, where the
+tell is a gerund with an object after it. `you loose many advantages` was missed because
 the rule looked only at what followed `loose`, not at the subject before it.
 `its often useful` was missed because adverbs had been stripped from the `its`
 rule along with the adjectives, although an adverb cannot follow a possessive at
