@@ -26,6 +26,8 @@ export type ToWorker =
   | { type: 'setConfig'; config: Record<string, boolean | null> }
   | { type: 'getConfig' }
   | { type: 'addWords'; words: string[] }
+  /** Replace the custom dictionary outright, so a word can be taken back out. */
+  | { type: 'setWords'; words: string[] }
   | { type: 'ignoreHash'; hash: string }
   | { type: 'dispose' };
 

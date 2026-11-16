@@ -1,4 +1,4 @@
-import type { Category, EngineState, Issue } from '@lucid/engine';
+import type { Category, EngineState, EngineStats, Issue } from '@lucid/engine';
 
 /** Shown in shortcut hints. Mac uses the command key, everything else Ctrl. */
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
@@ -28,6 +28,8 @@ export interface SidebarHandlers {
 }
 
 export class Sidebar {
+  /** False on a browser without the CSS Custom Highlight API, so the list is all there is. */
+  highlightsSupported = true;
   private readonly root: HTMLElement;
   private readonly handlers: SidebarHandlers;
   private filter: Category | 'all' = 'all';
@@ -111,9 +113,12 @@ export class Sidebar {
           ${metric('Cache', `${stats.harperBlocksCached}`, 'blocks reused last run')}
           ${metric('Rules loaded', `${(stats.phraseRules + stats.harperRules).toLocaleString()}`, `${stats.harperRules} Harper + ${stats.phraseRules} phrase`)}
         </dl>
-        <div class="engine-status ${stats.ready ? 'ok' : ''}">
-          ${stats.ready ? `Harper ready, loaded in ${stats.harperSetupMs}ms` : 'Loading Harper WASM&hellip;'}
+        <div class="engine-status ${engineStatusClass(stats)}">
+          ${engineStatusText(stats)}
         </div>
+        ${this.highlightsSupported ? '' : `<div class="engine-status warn">
+          This browser cannot paint underlines. Suggestions are listed here instead.
+        </div>`}
       </div>
     `;
 
@@ -220,6 +225,20 @@ export class Sidebar {
       );
     }
   }
+}
+
+/** What the engine panel says about tier 1, including when it has failed. */
+function engineStatusText(stats: EngineStats): string {
+  if (stats.error) {
+    return `Grammar checking is unavailable: ${escapeHtml(stats.error)}. Clarity, engagement and delivery still work. Keep typing to retry.`;
+  }
+  if (stats.ready) return `Harper ready, loaded in ${stats.harperSetupMs}ms`;
+  return 'Loading Harper WASM&hellip;';
+}
+
+function engineStatusClass(stats: EngineStats): string {
+  if (stats.error) return 'warn';
+  return stats.ready ? 'ok' : '';
 }
 
 function tab(id: string, label: string, count: number, active: string): string {

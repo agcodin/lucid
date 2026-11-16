@@ -22,6 +22,12 @@ export interface EngineStats {
   harperRules: number;
   harperSetupMs: number;
   ready: boolean;
+  /**
+   * Set when the grammar worker failed. Tier 0 keeps working, so the editor
+   * stays useful, but correctness checking is gone and the UI has to say so
+   * rather than show a spinner forever.
+   */
+  error?: string;
 }
 
 export interface EngineState {
@@ -72,6 +78,7 @@ export class Lucid {
   private slots: Slot[] = [];
   private dismissed = new Set<string>();
   private ruleConfig: RuleConfig = DEFAULT_RULE_CONFIG;
+  private dictionary: string[] = [];
 
   private gen = 0;
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -201,6 +208,7 @@ export class Lucid {
     switch (message.type) {
       case 'ready':
         this.stats.ready = true;
+        this.stats.error = undefined; // A retry succeeded.
         this.stats.harperRules = message.rules;
         this.stats.harperSetupMs = message.setupMs;
         this.emit();
@@ -226,6 +234,8 @@ export class Lucid {
 
       case 'error':
         console.error('[lucid] worker:', message.message);
+        this.stats.error = message.message;
+        this.emit();
         break;
     }
   }
@@ -278,11 +288,34 @@ export class Lucid {
     this.emit();
   }
 
-  /** Teach the spell checker a word, and re-lint everything that mentioned it. */
+  /**
+   * Teach the spell checker a word, and re-lint everything that mentioned it.
+   *
+   * The list is kept here rather than only in the worker so the UI can show it
+   * and take entries back out. A word added by mistake is otherwise invisible
+   * and permanent.
+   */
   addToDictionary(word: string): void {
-    this.send({ type: 'addWords', words: [word] });
+    const clean = word.trim();
+    if (clean.length === 0 || this.dictionary.includes(clean)) return;
+    this.setDictionary([...this.dictionary, clean]);
+  }
+
+  removeFromDictionary(word: string): void {
+    this.setDictionary(this.dictionary.filter((entry) => entry !== word));
+  }
+
+  /** Replace the whole custom dictionary and re-lint against it. */
+  setDictionary(words: string[]): void {
+    this.dictionary = [...new Set(words)].sort((a, b) => a.localeCompare(b));
+    this.send({ type: 'setWords', words: this.dictionary });
     for (const slot of this.slots) slot.harperFresh = false;
     this.scheduleHarper(this.slots.map((slot) => slot.block));
+    this.emit();
+  }
+
+  getDictionary(): string[] {
+    return [...this.dictionary];
   }
 
   setHarperConfig(config: Record<string, boolean | null>): void {

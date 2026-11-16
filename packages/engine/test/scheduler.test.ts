@@ -236,3 +236,91 @@ test('category counts follow what is shown', async () => {
   assert.equal(states.at(-1)!.report.counts.clarity, 0);
   engine.dispose();
 });
+
+test('a worker failure is surfaced in stats, not just logged', async () => {
+  const { engine, worker, states } = makeEngine();
+  engine.setText('Some text to check.');
+  await settle();
+  assert.equal(states.at(-1)!.stats.error, undefined);
+
+  worker.onmessage?.({
+    data: { type: 'error', message: 'failed to compile WebAssembly module' },
+  } as MessageEvent<FromWorker>);
+  await settle();
+
+  assert.match(states.at(-1)!.stats.error ?? '', /WebAssembly/);
+  engine.dispose();
+});
+
+test('tier 0 keeps working after the worker fails', async () => {
+  const { engine, worker, states } = makeEngine();
+  worker.autoReply = false;
+  worker.onmessage?.({ data: { type: 'error', message: 'boom' } } as MessageEvent<FromWorker>);
+  engine.setText('In order to ship, we utilize it.');
+  await settle();
+
+  const state = states.at(-1)!;
+  assert.ok(state.issues.length > 0, 'rule issues should still arrive');
+  assert.ok(state.issues.every((issue) => issue.tier === 'rules'));
+  assert.equal(state.stats.error, 'boom');
+  engine.dispose();
+});
+
+test('a later ready clears a previous error', async () => {
+  const { engine, worker, states } = makeEngine();
+  engine.setText('Some text.');
+  await settle();
+  worker.onmessage?.({ data: { type: 'error', message: 'boom' } } as MessageEvent<FromWorker>);
+  await settle();
+  assert.equal(states.at(-1)!.stats.error, 'boom');
+
+  worker.onmessage?.({ data: { type: 'ready', rules: 936, setupMs: 500 } } as MessageEvent<FromWorker>);
+  await settle();
+  assert.equal(states.at(-1)!.stats.error, undefined, 'a successful retry should clear it');
+  assert.equal(states.at(-1)!.stats.ready, true);
+  engine.dispose();
+});
+
+test('the dictionary can be read back, added to and taken from', async () => {
+  const { engine, worker } = makeEngine();
+  engine.setText('Some text.');
+  await settle();
+
+  engine.addToDictionary('Lucid');
+  engine.addToDictionary('Harper');
+  engine.addToDictionary('Lucid'); // A duplicate must not appear twice.
+  await settle();
+  assert.deepEqual(engine.getDictionary(), ['Harper', 'Lucid']);
+
+  engine.removeFromDictionary('Harper');
+  await settle();
+  assert.deepEqual(engine.getDictionary(), ['Lucid']);
+
+  // Removal has to replace the dictionary, since Harper's import only adds.
+  const last = worker.sent.filter((m) => m.type === 'setWords').at(-1) as { words: string[] };
+  assert.deepEqual(last.words, ['Lucid']);
+  engine.dispose();
+});
+
+test('adding a word re-lints the document against it', async () => {
+  const { engine, worker } = makeEngine();
+  engine.setText(['Alpha block.', 'Beta block.'].join('\n\n'));
+  await settle();
+  worker.linted.length = 0;
+
+  engine.addToDictionary('Nonce');
+  await settle();
+  assert.equal(worker.linted.length, 2, 'every block should be checked again');
+  engine.dispose();
+});
+
+test('an empty or blank word is ignored', async () => {
+  const { engine } = makeEngine();
+  engine.setText('Some text.');
+  await settle();
+  engine.addToDictionary('   ');
+  engine.addToDictionary('');
+  await settle();
+  assert.deepEqual(engine.getDictionary(), []);
+  engine.dispose();
+});

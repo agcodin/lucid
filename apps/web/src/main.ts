@@ -4,7 +4,7 @@ import HarperWorker from '@lucid/engine/worker?worker';
 import { Editor } from './editor.js';
 import { Sidebar } from './sidebar.js';
 import { RewriteBar } from './rewrite.js';
-import { SettingsPanel, loadRuleConfig } from './settings.js';
+import { SettingsPanel, loadRuleConfig, loadDictionary } from './settings.js';
 
 const SAMPLE = `In order to facilitate the utilization of our new onboarding system, we have made a decision to implement a change that will have an impact on the way in which the team operates on a daily basis.
 
@@ -74,9 +74,14 @@ const sidebar = new Sidebar(document.querySelector<HTMLElement>('#sidebar')!, {
     engine.dismiss(issue);
     if (activeId === issue.id) setActive(undefined);
   },
-  onAddToDictionary: (word) => engine.addToDictionary(word.trim()),
+  onAddToDictionary: (word) => {
+    engine.addToDictionary(word.trim());
+    settingsPanel.setDictionary(engine.getDictionary());
+  },
   onFilter: (_category: Category | 'all') => undefined,
 });
+
+sidebar.highlightsSupported = editor.highlightsSupported;
 
 const engine = new Lucid({
   worker: new HarperWorker(),
@@ -186,11 +191,14 @@ try {
 // --- Which rules to show -------------------------------------------------
 
 engine.setRuleConfig(loadRuleConfig());
+engine.setDictionary(loadDictionary());
 
-new SettingsPanel(
+const settingsPanel = new SettingsPanel(
   document.querySelector<HTMLElement>('#rules')!,
   loadRuleConfig(),
+  loadDictionary(),
   (config) => engine.setRuleConfig(config),
+  (words) => engine.setDictionary(words),
 );
 
 const rulesPanel = document.querySelector<HTMLElement>('#rules')!;

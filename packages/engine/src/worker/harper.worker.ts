@@ -42,7 +42,14 @@ function setup(dialect: number): Promise<void> {
     await linter.setup();
     const config = await linter.getLintConfig();
     post({ type: 'ready', rules: Object.keys(config).length, setupMs: Math.round(performance.now() - t0) });
-  })();
+  })().catch((error: unknown) => {
+    // Clear the cached promise, or every later message awaits this same
+    // rejection and Harper can never come back. Loading a 20MB binary can fail
+    // on a flaky connection, and the next edit is a reasonable time to retry.
+    ready = undefined;
+    linter = undefined;
+    throw error;
+  });
   return ready;
 }
 
@@ -176,6 +183,15 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       case 'addWords':
         await setup(Dialect.American);
         await linter!.importWords(message.words);
+        cache.clear();
+        cacheOrigin.clear();
+        break;
+
+      case 'setWords':
+        await setup(Dialect.American);
+        // Harper's importWords only adds, so a removal means starting over.
+        await linter!.clearWords();
+        if (message.words.length > 0) await linter!.importWords(message.words);
         cache.clear();
         cacheOrigin.clear();
         break;

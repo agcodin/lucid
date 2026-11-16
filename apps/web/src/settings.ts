@@ -3,6 +3,7 @@ import type { Category, RuleConfig } from '@lucid/engine';
 import { CATEGORY_LABELS } from './sidebar.js';
 
 const STORAGE = 'lucid.rules';
+const DICTIONARY_STORAGE = 'lucid.dictionary';
 
 /** Rule groups worth switching off on their own, as opposed to whole categories. */
 const GROUPS: { id: string; label: string; note: string; category: Category }[] = [
@@ -38,15 +39,50 @@ function save(config: RuleConfig): void {
   }
 }
 
+export function loadDictionary(): string[] {
+  try {
+    const stored = localStorage.getItem(DICTIONARY_STORAGE);
+    const parsed: unknown = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed.filter((word): word is string => typeof word === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDictionary(words: string[]): void {
+  try {
+    localStorage.setItem(DICTIONARY_STORAGE, JSON.stringify(words));
+  } catch {
+    // Not persisting is survivable; the words still apply this session.
+  }
+}
+
 export class SettingsPanel {
   private readonly root: HTMLElement;
   private readonly onChange: (config: RuleConfig) => void;
+  private readonly onDictionaryChange: (words: string[]) => void;
   private config: RuleConfig;
+  private dictionary: string[];
 
-  constructor(root: HTMLElement, config: RuleConfig, onChange: (config: RuleConfig) => void) {
+  constructor(
+    root: HTMLElement,
+    config: RuleConfig,
+    dictionary: string[],
+    onChange: (config: RuleConfig) => void,
+    onDictionaryChange: (words: string[]) => void,
+  ) {
     this.root = root;
     this.config = config;
+    this.dictionary = dictionary;
     this.onChange = onChange;
+    this.onDictionaryChange = onDictionaryChange;
+    this.render();
+  }
+
+  /** Keep the listed words in step when one is added from a suggestion card. */
+  setDictionary(words: string[]): void {
+    this.dictionary = words;
+    saveDictionary(words);
     this.render();
   }
 
@@ -69,7 +105,26 @@ export class SettingsPanel {
         const on = !this.config.disabledRules.includes(group.id);
         return toggle(group.id, group.label, group.note, on && !categoryOff, categoryOff);
       }).join('')}
+
+      <h3 class="spaced">Your dictionary</h3>
+      <div class="dictionary">
+        ${this.dictionary.length === 0
+          ? '<p class="dictionary-empty">Words you add from a spelling suggestion appear here, and you can take them back out.</p>'
+          : this.dictionary
+              .map((word) => `<span class="word">${escapeHtml(word)}<button data-word="${escapeHtml(word)}" aria-label="Remove ${escapeHtml(word)}">&times;</button></span>`)
+              .join('')}
+      </div>
     `;
+
+    for (const button of this.root.querySelectorAll<HTMLElement>('.word button')) {
+      button.addEventListener('click', () => {
+        const next = this.dictionary.filter((word) => word !== button.dataset.word);
+        this.dictionary = next;
+        saveDictionary(next);
+        this.onDictionaryChange(next);
+        this.render();
+      });
+    }
 
     for (const input of this.root.querySelectorAll<HTMLInputElement>('input[type=checkbox]')) {
       input.addEventListener('change', () => {
@@ -88,6 +143,12 @@ export class SettingsPanel {
       });
     }
   }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!,
+  );
 }
 
 function toggle(id: string, label: string, note: string, on: boolean, disabled = false): string {

@@ -389,3 +389,24 @@ kbd {
 .toggle-text { display: grid; gap: 1px; min-width: 0; }
 .toggle-text strong { font-size: 13px; font-weight: 540; }
 .toggle-text span { font-size: 11.5px; color: var(--faint); }
+
+.engine-status.warn {
+  color: var(--correctness);
+  line-height: 1.45;
+}
+
+/* --- Custom dictionary -------------------------------------------------- */
+
+.dictionary { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
+.dictionary-empty { margin: 0; font-size: 11.5px; color: var(--faint); max-width: 54ch; line-height: 1.5; }
+.word {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 5px 3px 9px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 12.5px; font-family: var(--serif);
+}
+.word button {
+  font: inherit; font-size: 13px; line-height: 1; cursor: pointer;
+  border: none; background: none; color: var(--faint); padding: 0 2px;
+}
+.word button:hover { color: var(--correctness); }
