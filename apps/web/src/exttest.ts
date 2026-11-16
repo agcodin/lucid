@@ -10,6 +10,9 @@
  * exercises the whole stack apart from the service worker hop.
  */
 import HarperWorker from '@lucid/engine/worker?worker';
+// The extension ships this as a content-script stylesheet; the harness needs
+// it loaded so the underlines actually paint.
+import '../../extension/src/content.css';
 
 type Listener = (message: unknown) => void;
 
@@ -20,6 +23,11 @@ function installChromeStub(): void {
   worker.onmessage = (event: MessageEvent) => {
     for (const fn of listeners) fn(event.data);
   };
+  // An in-memory stand-in for chrome.storage.sync, which the panel's settings
+  // read and write.
+  const store: Record<string, unknown> = {};
+  const changeListeners: ((changes: Record<string, { newValue: unknown }>, area: string) => void)[] = [];
+
   (window as unknown as Record<string, unknown>).chrome = {
     runtime: {
       connect: () => ({
@@ -28,6 +36,23 @@ function installChromeStub(): void {
         onMessage: { addListener: (fn: Listener) => { listeners.push(fn); } },
         onDisconnect: { addListener: () => undefined },
       }),
+    },
+    storage: {
+      sync: {
+        get: async (key: string) => ({ [key]: store[key] }),
+        set: async (values: Record<string, unknown>) => {
+          Object.assign(store, values);
+          const changes = Object.fromEntries(
+            Object.entries(values).map(([k, v]) => [k, { newValue: v }]),
+          );
+          for (const fn of changeListeners) fn(changes, 'sync');
+        },
+      },
+      onChanged: {
+        addListener: (fn: (changes: Record<string, { newValue: unknown }>, area: string) => void) => {
+          changeListeners.push(fn);
+        },
+      },
     },
   };
 }
@@ -174,6 +199,68 @@ check('panel lists a suggestion with a fix', panelRoot.querySelector('.r button'
   check('applying a suggestion edits the host page', editable.innerText !== before,
     `${JSON.stringify(before.slice(0, 40))} -> ${JSON.stringify(editable.innerText.slice(0, 40))}\n        ${JSON.stringify(diagnostics)}`);
   check('nested markup survives the edit', editable.querySelector('b') != null && editable.querySelector('li') != null);
+}
+
+// --- Panel controls -----------------------------------------------------
+
+const shadow = () => document.querySelector('#lucid-root')!.shadowRoot!;
+
+// Dismissing an issue removes it.
+{
+  const before = badgeCount();
+  shadow().querySelector<HTMLElement>('button[data-dismiss]')?.click();
+  await sleep(700);
+  check('dismissing an issue removes it', badgeCount() < before, `${before} -> ${badgeCount()}`);
+}
+
+// The settings view opens and switches categories off.
+{
+  shadow().querySelector<HTMLElement>('.gear')!.click();
+  await sleep(300);
+  check('settings view opens', shadow().querySelectorAll('input[data-category]').length === 4);
+
+  // Re-query each time: the view can be rebuilt between interactions.
+  const clarityBox = () => shadow().querySelector<HTMLInputElement>('input[data-category="clarity"]')!;
+  const before = badgeCount();
+
+  const off = clarityBox();
+  off.checked = false;
+  off.dispatchEvent(new Event('click', { bubbles: true }));
+  await sleep(700);
+  check('switching a category off hides its issues', badgeCount() < before, `${before} -> ${badgeCount()}`);
+
+  const on = clarityBox();
+  check('the checkbox reflects the stored setting', on.checked === false);
+  on.checked = true;
+  on.dispatchEvent(new Event('click', { bubbles: true }));
+  await sleep(700);
+  check('switching it back on restores them', badgeCount() === before, `back to ${badgeCount()}, expected ${before}`);
+
+  shadow().querySelector<HTMLElement>('.gear')!.click();
+  await sleep(300);
+}
+
+// Teaching it a word removes the spelling flag and remembers the word.
+{
+  const learn = shadow().querySelector<HTMLElement>('button[data-learn]');
+  if (learn) {
+    const word = learn.dataset.learn;
+    const before = badgeCount();
+    learn.click();
+    await sleep(1400);
+    check('learning a word drops its spelling flag', badgeCount() < before, `${word}: ${before} -> ${badgeCount()}`);
+
+    shadow().querySelector<HTMLElement>('.gear')!.click();
+    await sleep(300);
+    const chips = [...shadow().querySelectorAll('.w')].map((w) => w.firstChild?.textContent);
+    check('the learned word is listed in settings', chips.includes(word), JSON.stringify(chips));
+
+    shadow().querySelector<HTMLElement>('button[data-forget]')?.click();
+    await sleep(1400);
+    check('forgetting it brings the flag back', badgeCount() === before, `${badgeCount()} vs ${before}`);
+  } else {
+    check('a spelling suggestion offers Learn word', false, 'no harper:Spelling issue present');
+  }
 }
 
 // Leaving the field tears the attachment down.

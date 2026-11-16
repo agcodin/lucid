@@ -2,6 +2,7 @@ import { Lucid, applyReplacement } from '@lucid/engine';
 import type { Category, EngineState, Issue } from '@lucid/engine';
 import { PORT_NAME } from './messages.js';
 import { buildTextIndex, rangeFor, type TextIndex } from './textindex.js';
+import { CATEGORY_LABELS, DEFAULT_PREFS, loadPrefs, onPrefsChanged, savePrefs, type Prefs } from './prefs.js';
 
 const CATEGORIES: Category[] = ['correctness', 'clarity', 'engagement', 'delivery'];
 
@@ -51,6 +52,18 @@ function supportsValueRange(field: Field): field is Field & ValueRangeField {
 
 const HIGHLIGHTS_SUPPORTED = typeof CSS !== 'undefined' && 'highlights' in CSS;
 
+/**
+ * Preferences apply to whichever field is attached, so they live here rather
+ * than on an attachment that is thrown away the moment focus moves.
+ */
+let prefs: Prefs = DEFAULT_PREFS;
+let live: Attachment | undefined;
+
+function applyPrefs(next: Prefs): void {
+  prefs = next;
+  live?.usePrefs(next);
+}
+
 class Attachment {
   private readonly field: Field;
   private readonly engine: Lucid;
@@ -68,6 +81,7 @@ class Attachment {
       worker: portWorker(),
       onUpdate: (state) => this.onUpdate(state),
     });
+    this.usePrefs(prefs);
 
     field.addEventListener('input', this.onInput, { passive: true });
     this.onInput();
@@ -185,6 +199,25 @@ class Attachment {
     this.engine.dismiss(issue);
   }
 
+  /** Point the engine at the current preferences. */
+  usePrefs(next: Prefs): void {
+    this.engine.setRuleConfig(next.rules);
+    this.engine.setDictionary(next.dictionary);
+  }
+
+  /** The host text an issue covers. */
+  textOf(issue: Issue): string {
+    return this.readText().slice(issue.start, issue.end);
+  }
+
+  addWord(word: string): void {
+    const clean = word.trim();
+    if (clean.length === 0 || prefs.dictionary.includes(clean)) return;
+    const next = { ...prefs, dictionary: [...prefs.dictionary, clean] };
+    applyPrefs(next);
+    void savePrefs(next);
+  }
+
   destroy(): void {
     this.field.removeEventListener('input', this.onInput);
     this.engine.dispose();
@@ -199,6 +232,8 @@ class Panel {
   private readonly shadow: ShadowRoot;
   private readonly body: HTMLElement;
   private open = false;
+  private settingsOpen = false;
+  private lastSettingsHtml = '';
   /** The last update, so opening the panel can fill the list straight away. */
   private last: { state: EngineState; attachment: Attachment } | undefined;
 
@@ -213,7 +248,14 @@ class Panel {
     this.shadow.innerHTML = `<style>${PANEL_CSS}</style>
       <div class="wrap" hidden>
         <button class="badge" type="button"><span class="n">0</span><span class="lbl">suggestions</span></button>
-        <div class="card" hidden><div class="list"></div></div>
+        <div class="card" hidden>
+          <div class="head">
+            <span class="title">Suggestions</span>
+            <button class="gear" type="button" aria-label="Settings">&#9881;</button>
+          </div>
+          <div class="list"></div>
+          <div class="settings" hidden></div>
+        </div>
       </div>`;
     this.body = this.shadow.querySelector('.wrap')!;
 
@@ -223,6 +265,60 @@ class Panel {
       // The list is only built while the panel is open, so opening it has to
       // fill it now rather than wait for the next edit.
       if (this.open && this.last) this.render(this.last.state, this.last.attachment);
+    });
+
+    this.shadow.querySelector('.gear')!.addEventListener('click', () => {
+      this.settingsOpen = !this.settingsOpen;
+      if (this.last) this.render(this.last.state, this.last.attachment);
+    });
+
+    // One delegated handler, so a rebuilt list never loses its wiring.
+    this.shadow.querySelector('.card')!.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      const attachment = this.last?.attachment;
+      const issues = this.last?.state.issues;
+      if (!attachment || !issues) return;
+
+      const fix = target.closest<HTMLElement>('button[data-j]');
+      if (fix) {
+        const issue = issues[Number(fix.dataset.i)];
+        const replacement = issue?.replacements[Number(fix.dataset.j)];
+        if (issue && replacement) attachment.apply(issue, replacement.text);
+        return;
+      }
+      const dismiss = target.closest<HTMLElement>('button[data-dismiss]');
+      if (dismiss) {
+        const issue = issues[Number(dismiss.dataset.dismiss)];
+        if (issue) attachment.dismiss(issue);
+        return;
+      }
+      const learn = target.closest<HTMLElement>('button[data-learn]');
+      if (learn) {
+        attachment.addWord(learn.dataset.learn!);
+        return;
+      }
+      const category = target.closest<HTMLInputElement>('input[data-category]');
+      if (category) {
+        const next: Prefs = {
+          ...prefs,
+          rules: {
+            ...prefs.rules,
+            categories: { ...prefs.rules.categories, [category.dataset.category!]: category.checked },
+          },
+        };
+        applyPrefs(next);
+        void savePrefs(next);
+        return;
+      }
+      const forget = target.closest<HTMLElement>('button[data-forget]');
+      if (forget) {
+        const next: Prefs = {
+          ...prefs,
+          dictionary: prefs.dictionary.filter((word) => word !== forget.dataset.forget),
+        };
+        applyPrefs(next);
+        void savePrefs(next);
+      }
     });
   }
 
@@ -240,31 +336,62 @@ class Panel {
     this.shadow.querySelector('.n')!.textContent = String(count);
     this.shadow.querySelector('.lbl')!.textContent = count === 1 ? 'suggestion' : 'suggestions';
 
-    const list = this.shadow.querySelector('.list')!;
+    const list = this.shadow.querySelector('.list') as HTMLElement;
+    const settings = this.shadow.querySelector('.settings') as HTMLElement;
     if (!this.open) return;
+
+    settings.hidden = !this.settingsOpen;
+    list.hidden = this.settingsOpen;
+
+    if (this.settingsOpen) {
+      const html = `
+        <p class="sec">Categories</p>
+        ${(Object.keys(CATEGORY_LABELS) as Category[]).map((category) => `
+          <label class="opt">
+            <input type="checkbox" data-category="${category}" ${prefs.rules.categories[category] ? 'checked' : ''} />
+            ${CATEGORY_LABELS[category]}
+          </label>`).join('')}
+        <p class="sec">Your dictionary</p>
+        ${prefs.dictionary.length === 0
+          ? '<p class="hint">Words you teach it from a spelling suggestion appear here.</p>'
+          : `<div class="words">${prefs.dictionary
+              .map((word) => `<span class="w">${escapeHtml(word)}<button data-forget="${escapeHtml(word)}" aria-label="Remove ${escapeHtml(word)}">&times;</button></span>`)
+              .join('')}</div>`}`;
+      // Only write when it actually differs. The engine emits on every edit,
+      // and rebuilding this view would replace the checkbox the user is
+      // clicking, losing focus mid-interaction.
+      if (this.lastSettingsHtml !== html) {
+        this.lastSettingsHtml = html;
+        settings.innerHTML = html;
+      }
+      return;
+    }
+
+    if (state.issues.length === 0) {
+      list.innerHTML = '<p class="hint">Nothing to flag here.</p>';
+      return;
+    }
 
     list.innerHTML = state.issues
       .slice(0, 40)
-      .map(
-        (issue, i) => `<div class="row ${issue.category}" data-i="${i}">
+      .map((issue, i) => `<div class="row ${issue.category}" data-i="${i}">
           <div class="t">${escapeHtml(issue.title)}</div>
-          ${issue.replacements.length > 0
-            ? `<div class="r">${issue.replacements
-                .slice(0, 3)
-                .map((rep, j) => `<button data-i="${i}" data-j="${j}">${escapeHtml(rep.label ?? rep.text)}</button>`)
-                .join('')}</div>`
-            : ''}
-        </div>`,
-      )
+          <div class="r">
+            ${issue.replacements.slice(0, 3)
+              .map((rep, j) => `<button data-i="${i}" data-j="${j}">${escapeHtml(rep.label ?? rep.text)}</button>`)
+              .join('')}
+            ${issue.rule === 'harper:Spelling'
+              ? `<button class="ghost" data-learn="${escapeHtml(this.spanOf(issue))}">Learn word</button>`
+              : ''}
+            <button class="ghost" data-dismiss="${i}">Dismiss</button>
+          </div>
+        </div>`)
       .join('');
+  }
 
-    list.querySelectorAll<HTMLElement>('button[data-j]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const issue = state.issues[Number(button.dataset.i)];
-        const replacement = issue?.replacements[Number(button.dataset.j)];
-        if (issue && replacement) attachment.apply(issue, replacement.text);
-      });
-    });
+  /** The text an issue covers, for the "learn word" action. */
+  private spanOf(issue: Issue): string {
+    return this.last?.attachment.textOf(issue) ?? '';
   }
 }
 
@@ -295,11 +422,28 @@ const PANEL_CSS = `
   border-radius: 5px; border: 1px solid #2f6f5e; background: transparent; color: #2f6f5e;
 }
 .r button:hover { background: #2f6f5e; color: #fff; }
+.r button.ghost { border-color: #e0dcd5; color: #6f6a62; }
+.r button.ghost:hover { background: #e0dcd5; color: #1c1b19; }
+.head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; }
+.title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #9a948b; }
+.gear { font: inherit; font-size: 14px; line-height: 1; cursor: pointer; border: none; background: none; color: #6f6a62; padding: 2px 4px; }
+.gear:hover { color: #1c1b19; }
+.sec { margin: 6px 4px 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #9a948b; }
+.opt { display: flex; align-items: center; gap: 7px; padding: 4px 6px; font-size: 12.5px; cursor: pointer; }
+.opt input { accent-color: #2f6f5e; }
+.hint { margin: 4px 6px; font-size: 11.5px; color: #9a948b; line-height: 1.5; }
+.words { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 4px; }
+.w { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border-radius: 6px; border: 1px solid #e0dcd5; font-size: 12px; }
+.w button { font: inherit; cursor: pointer; border: none; background: none; color: #9a948b; padding: 0 2px; }
+.w button:hover { color: #d2443c; }
 @media (prefers-color-scheme: dark) {
   .wrap { color: #e9e7e3; }
   .badge, .card { background: #1b1d23; border-color: #2d3038; }
   .badge .lbl { color: #9a958d; }
   .row { background: #14151a; }
+  .r button.ghost { border-color: #2d3038; color: #9a958d; }
+  .r button.ghost:hover { background: #2d3038; color: #e9e7e3; }
+  .w { border-color: #2d3038; }
 }
 `;
 
@@ -318,12 +462,16 @@ const panel = new Panel();
 let attachment: Attachment | undefined;
 let attachedTo: Field | undefined;
 
+void loadPrefs().then(applyPrefs);
+onPrefsChanged(applyPrefs);
+
 document.addEventListener('focusin', (event) => {
   const target = event.target;
   if (!isEditable(target) || target === attachedTo) return;
   attachment?.destroy();
   attachedTo = target;
   attachment = new Attachment(target, panel);
+  live = attachment;
 }, true);
 
 document.addEventListener('focusout', (event) => {
@@ -335,6 +483,7 @@ document.addEventListener('focusout', (event) => {
     attachment?.destroy();
     attachment = undefined;
     attachedTo = undefined;
+    live = undefined;
     panel.hide();
   }, 150);
 }, true);
