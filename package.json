@@ -12,8 +12,8 @@
     "build": "npm run build -w @lucid/web && npm run build -w @lucid/extension",
     "build:ext": "npm run build -w @lucid/extension",
     "bench": "tsx bench/bench.ts",
-    "typecheck": "tsc --noEmit -p packages/engine && tsc --noEmit -p apps/web",
-    "test": "node --import tsx --test packages/engine/test/*.test.ts",
+    "typecheck": "tsc --noEmit -p packages/engine && tsc --noEmit -p apps/web && tsc --noEmit -p apps/extension",
+    "test": "node --import tsx --test packages/engine/test/*.test.ts apps/extension/test/*.test.ts",
     "build:web": "npm run build -w @lucid/web",
     "corpus": "node corpus/fetch.mjs && tsx corpus/analyze.ts"
   },
