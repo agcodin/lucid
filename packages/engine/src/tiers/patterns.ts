@@ -29,6 +29,18 @@ const IRREGULAR_PARTICIPLES = new Set([
   'understood', 'woken', 'worn', 'won', 'written', 'withheld', 'overseen',
 ]);
 
+/**
+ * Participles that form a fixed description rather than a hidden action.
+ * "X is known as Y", "is based on", "is located in" are not passives a writer
+ * should rewrite, and together they were ~8% of all passive flags on edited
+ * prose.
+ */
+const STATIVE_PARTICIPLES = new Set([
+  'based', 'known', 'called', 'named', 'located', 'situated', 'composed',
+  'comprised', 'involved', 'related', 'considered', 'entitled', 'titled',
+  'intended', 'supposed', 'concerned', 'interested', 'aimed', 'set',
+]);
+
 function isPastParticiple(token: Token): boolean {
   const w = token.lower;
   if (IRREGULAR_PARTICIPLES.has(w)) return true;
@@ -68,6 +80,7 @@ function passiveVoice(text: string, tokens: Token[], hits: PatternHit[]): void {
     if (j < tokens.length && tokens[j]!.lower.endsWith('ly')) j++;
     const participle = tokens[j];
     if (!participle || !isPastParticiple(participle)) continue;
+    if (STATIVE_PARTICIPLES.has(participle.lower)) continue;
 
     // "by <agent>" right after makes the passive unambiguous and names the actor,
     // which is the version worth rewriting. Without it, flag more gently.
@@ -139,33 +152,55 @@ function adverbPileup(text: string, tokens: Token[], hits: PatternHit[]): void {
   });
 }
 
-/** Noun forms that bury a verb. The verb is almost always the better word. */
-const NOMINALIZATION_SUFFIX = /(?:tion|sion|ment|ance|ence|ity|ness)s?$/;
-const NOMINALIZATION_ALLOW = new Set([
-  'information', 'question', 'nation', 'station', 'section', 'option', 'version',
-  'condition', 'position', 'function', 'solution', 'direction', 'relation',
-  'tradition', 'institution', 'constitution', 'generation', 'population',
-  'mention', 'moment', 'document', 'element', 'equipment', 'environment',
-  'government', 'department', 'instrument', 'argument', 'experiment',
-  'distance', 'instance', 'balance', 'chance', 'performance', 'importance',
-  'difference', 'reference', 'experience', 'evidence', 'audience', 'science',
-  'quality', 'quantity', 'ability', 'security', 'activity', 'community',
-  'university', 'opportunity', 'majority', 'minority', 'priority', 'city',
-  'business', 'witness', 'illness', 'fitness',
+/**
+ * Nouns built from verbs, where the verb is the better word.
+ *
+ * An earlier version matched the -tion/-ment/-ness suffixes and kept an
+ * allowlist of exceptions. Measured against 74,000 words of edited prose it
+ * fired 2,036 times — once every 36 words — on ordinary concrete nouns like
+ * "thickness", "precipitation" and "expedition". No allowlist can cover the
+ * noun vocabulary of English, so this is an explicit list instead.
+ */
+const NOMINALIZATIONS = new Set([
+  'application', 'assessment', 'assumption', 'calculation', 'cancellation',
+  'classification', 'collection', 'completion', 'conclusion', 'consideration',
+  'construction', 'creation', 'declaration', 'description', 'determination',
+  'discussion', 'distribution', 'elimination', 'establishment', 'evaluation',
+  'examination', 'expansion', 'explanation', 'exploration', 'identification',
+  'implementation', 'improvement', 'inclusion', 'installation', 'integration',
+  'interpretation', 'introduction', 'investigation', 'management',
+  'measurement', 'modification', 'notification', 'observation', 'operation',
+  'organization', 'participation', 'preparation', 'presentation', 'prevention',
+  'production', 'protection', 'provision', 'publication', 'recognition',
+  'reduction', 'registration', 'rejection', 'removal', 'replacement',
+  'resolution', 'restoration', 'retention', 'selection', 'separation',
+  'simplification', 'specification', 'submission', 'suggestion', 'termination',
+  'transformation', 'transmission', 'utilization', 'validation', 'verification',
 ]);
 
+/** Determiners that mark the weak "the <noun> of <thing>" construction. */
+const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'its', 'their', 'our', 'his', 'her', 'your']);
+
+/**
+ * Flag only the construction that is actually weak: a determiner, a
+ * nominalization, then "of". "The implementation of the solution" buries the
+ * verb; "the organization held a vote" does not, and neither does "an average
+ * thickness of 1.9 km".
+ */
 function nominalizations(text: string, tokens: Token[], hits: PatternHit[]): void {
-  for (const token of tokens) {
-    if (token.lower.length < 8) continue;
-    if (!NOMINALIZATION_SUFFIX.test(token.lower)) continue;
-    if (NOMINALIZATION_ALLOW.has(token.lower.replace(/s$/, ''))) continue;
+  for (let i = 1; i < tokens.length - 1; i++) {
+    const token = tokens[i]!;
+    if (!NOMINALIZATIONS.has(token.lower)) continue;
+    if (!DETERMINERS.has(tokens[i - 1]!.lower)) continue;
+    if (tokens[i + 1]!.lower !== 'of') continue;
+
     hits.push({
       category: 'clarity',
       rule: 'clarity:nominalization',
-      start: token.start,
-      end: token.end,
+      start: tokens[i - 1]!.start,
+      end: tokens[i + 1]!.end,
       title: `"${token.text}" is a verb turned into a noun`,
-      detail: 'Nouns built from verbs make sentences longer and vaguer. Using the verb form usually cuts several words.',
+      detail: 'This construction buries the verb and adds words. Using the verb directly is usually shorter and more direct.',
     });
   }
 }
@@ -198,14 +233,34 @@ function doubleNegative(text: string, tokens: Token[], hits: PatternHit[]): void
   }
 }
 
+/** Roman numerals are capitalized by convention, not by shouting. */
+const ROMAN = /^[IVXLCDM]+$/;
+
 function shouting(text: string, tokens: Token[], hits: PatternHit[]): void {
-  const caps = tokens.filter((t) => t.text.length > 2 && t.text === t.text.toUpperCase() && /[A-Z]/.test(t.text));
-  if (caps.length >= 2) {
+  // Only an unbroken run counts. Scattered capitals are acronyms — "I sent the
+  // PDF to the API team" is not shouting, and neither is "Class II MHC" or
+  // "HIV/AIDS". Three in a row is the point at which it stops being plausible
+  // that every one of them is an initialism.
+  let run: Token[] = [];
+  let longest: Token[] = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    const isShout = token.text.length >= 2 && token.text === token.text.toUpperCase()
+      && /[A-Z]/.test(token.text) && !ROMAN.test(token.text);
+
+    if (isShout && (run.length === 0 || tokens[i - 1] === run[run.length - 1])) run.push(token);
+    else run = isShout ? [token] : [];
+
+    if (run.length > longest.length) longest = [...run];
+  }
+
+  if (longest.length >= 3) {
     hits.push({
       category: 'delivery',
       rule: 'delivery:all-caps',
-      start: caps[0]!.start,
-      end: caps[caps.length - 1]!.end,
+      start: longest[0]!.start,
+      end: longest[longest.length - 1]!.end,
       title: 'Capitals read as shouting',
       detail: 'Italics or bold carry emphasis without the raised voice.',
     });

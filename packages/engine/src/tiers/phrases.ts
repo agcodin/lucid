@@ -150,7 +150,7 @@ export const CLICHES: PhraseRule[] = ([
   'circle back', 'touch base', 'boil the ocean', 'drink from the firehose',
   'take it to the next level', 'push the envelope', 'raise the bar',
   'hit the ground running', 'back to the drawing board', 'win-win',
-  'par for the course', 'ahead of the curve', 'at the end of the day',
+  'par for the course', 'ahead of the curve',
   'last but not least', 'tip of the iceberg', 'few and far between',
   'needle in a haystack', 'avoid like the plague', 'easier said than done',
   'only time will tell', 'time will tell', 'the bottom line is',

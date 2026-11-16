@@ -24,14 +24,20 @@ const CONTRACTIONS: Record<string, string> = {
   oclock: "o'clock", yall: "y'all",
 };
 
-/** Words after which a bare "its" is nearly always the contraction "it's". */
+/**
+ * Words after which a bare "its" is nearly always the contraction "it's".
+ *
+ * Adjectives are deliberately absent. "its true significance" and "its clear
+ * advantage" are correct possessives, and an adjective cannot tell the two
+ * apart without knowing whether a noun follows. What remains are negation,
+ * adverbs, articles and other possessives, none of which can follow a
+ * possessive "its".
+ */
 const ITS_FOLLOWERS = new Set([
   'a', 'an', 'the', 'not', 'just', 'already', 'been', 'also', 'still', 'now',
-  'too', 'very', 'really', 'quite', 'clear', 'important', 'possible', 'likely',
-  'unlikely', 'true', 'false', 'easy', 'hard', 'difficult', 'better', 'worse',
-  'time', 'one', 'my', 'our', 'your', 'about', 'because', 'always', 'never',
-  'probably', 'definitely', 'obvious', 'fine', 'okay', 'ok', 'good', 'bad',
-  'worth', 'going', 'getting', 'taking', 'becoming', 'looking', 'working',
+  'too', 'very', 'really', 'quite', 'because', 'always', 'never',
+  'probably', 'definitely', 'my', 'our', 'your',
+  'going', 'getting', 'becoming', 'unclear', 'unlikely',
 ]);
 
 /** Words after which a bare "your" is nearly always "you're". */

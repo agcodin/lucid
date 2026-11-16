@@ -1,15 +1,34 @@
 import { hash } from './hash.js';
 import type { Block } from './types.js';
 
-/** Abbreviations that end in a period without ending a sentence. */
-const ABBREVIATIONS = new Set([
+/**
+ * Abbreviations are split by how they behave, not lumped together, because
+ * many of them are also ordinary words. A single set containing "sat", "us",
+ * "no", "wed" and "sun" silently swallows sentence breaks after "The cat sat."
+ * and "He gave it to us." — and every sentence-level rule then sees one long
+ * sentence instead of two.
+ */
+
+/** Titles. Always capitalized when used as a title, and never end a sentence. */
+const TITLE_ABBREV = new Set([
   'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'mt', 'rev', 'hon',
-  'inc', 'ltd', 'co', 'corp', 'dept', 'est', 'approx', 'vs', 'etc', 'al',
-  'eg', 'ie', 'cf', 'viz', 'ca', 'fig', 'vol', 'no', 'pp', 'ed',
-  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
-  'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
-  'usa', 'us', 'uk', 'eu', 'phd', 'md', 'ba', 'ma', 'bs', 'ms',
+  'gen', 'col', 'sgt', 'capt', 'lt', 'gov', 'sen', 'rep', 'atty', 'messrs',
 ]);
+
+/** Days and months. Capitalized as abbreviations; lowercase they are verbs and nouns. */
+const DATE_ABBREV = new Set([
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
+  'mon', 'tue', 'tues', 'wed', 'thu', 'thur', 'thurs', 'fri', 'sat', 'sun',
+]);
+
+/** Organization suffixes, likewise only abbreviations when capitalized. */
+const ORG_ABBREV = new Set(['inc', 'ltd', 'co', 'corp', 'dept', 'univ', 'assn', 'bros', 'est']);
+
+/** Latin and editorial shorthand, which can appear in any case. */
+const LATIN_ABBREV = new Set(['etc', 'vs', 'al', 'eg', 'ie', 'cf', 'viz', 'ibid', 'approx', 'ca']);
+
+/** Shorthand that only abbreviates when a number follows it. */
+const NUMBER_ABBREV = new Set(['no', 'nos', 'pp', 'vol', 'fig', 'ch', 'sec', 'art', 'ed', 'eds']);
 
 /**
  * Split text into paragraph blocks on blank lines, preserving absolute offsets.
@@ -87,17 +106,41 @@ export function toSentences(text: string): Sentence[] {
 
 /** Decide whether the period at `dot` ends a sentence or belongs to a token. */
 function closesSentence(text: string, dot: number): boolean {
+  // Decimals: a digit on each side.
+  if (dot > 0 && /\d/.test(text[dot - 1]!) && /\d/.test(text[dot + 1] ?? '')) return false;
+
   // Walk back over the word attached to the period.
   let wordStart = dot;
   while (wordStart > 0 && /[A-Za-z]/.test(text[wordStart - 1]!)) wordStart--;
-  const word = text.slice(wordStart, dot).toLowerCase();
+  const original = text.slice(wordStart, dot);
+  const word = original.toLowerCase();
 
-  if (word.length > 0 && ABBREVIATIONS.has(word)) return false;
   // Single letters are initials ("J. Smith") or acronyms spelled with periods.
   if (word.length === 1) return false;
-  // Decimals: a digit on each side.
-  if (dot > 0 && /\d/.test(text[dot - 1]!) && /\d/.test(text[dot + 1] ?? '')) return false;
+  if (word.length === 0) return true;
+
+  const capitalized = original[0] !== original[0]!.toLowerCase();
+  if (capitalized && (TITLE_ABBREV.has(word) || DATE_ABBREV.has(word) || ORG_ABBREV.has(word))) return false;
+
+  const next = nextNonSpace(text, dot + 1);
+  if (next === undefined) return true;
+
+  // "No. 5", "pp. 12": shorthand only when a number follows.
+  if (NUMBER_ABBREV.has(word) && /\d/.test(next)) return false;
+  // "vs. the": Latin shorthand mid-sentence. Followed by a capital, as in
+  // "etc. We left.", it is far more likely to be ending one.
+  if (LATIN_ABBREV.has(word) && next === next.toLowerCase()) return false;
+
   return true;
+}
+
+/** First character after `from` that is not a space or tab. */
+function nextNonSpace(text: string, from: number): string | undefined {
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i]!;
+    if (ch !== ' ' && ch !== '\t' && ch !== '\n') return ch;
+  }
+  return undefined;
 }
 
 /** Words of a sentence with offsets relative to that sentence. */
