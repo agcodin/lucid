@@ -39,6 +39,7 @@ const STATIVE_PARTICIPLES = new Set([
   'based', 'known', 'called', 'named', 'located', 'situated', 'composed',
   'comprised', 'involved', 'related', 'considered', 'entitled', 'titled',
   'intended', 'supposed', 'concerned', 'interested', 'aimed', 'set',
+  'referred', 'defined', 'described',
 ]);
 
 function isPastParticiple(token: Token): boolean {

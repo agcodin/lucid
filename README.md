@@ -64,14 +64,20 @@ on every update. The last two rows exist so that cannot happen again.
 ## How accurate is it
 
 A checker that cries wolf is worse than no checker, so every rule has a measured
-firing rate. `npm run corpus` fetches 164,000 words of copy-edited Wikipedia
-prose and reports how often each rule fires on writing that an editor has
-already passed.
+firing rate. `npm run corpus` fetches 192,000 words across two genres and
+reports how often each rule fires on writing an editor has already passed.
+
+The genres are there to keep one register from setting the tuning. Encyclopedic
+prose uses passive voice and long sentences far more than technical
+documentation does, and MDN is the sharper of the two because its style guide
+asks for active voice and plain wording, which is what the clarity rules claim
+to look for.
 
 Correctness rules claim an outright mistake, so on text like this they should
-stay quiet. They find zero flags in all 164,433 words. Clarity and engagement
-rules are advisory and will fire on any real text, so the signal there is a rule
-firing far more often than its peers, which usually means it is too loose.
+stay quiet. They find zero flags across all 192,381 words of both genres.
+Clarity and engagement rules are advisory and will fire on any real text, so the
+signal there is a rule firing far harder in one genre than the other, or far
+harder than its peers.
 
 That harness found five real bugs that reading the code had not.
 
@@ -104,6 +110,17 @@ but not `clarity:sentence-long` for `clarity:sentence`, and the separator
 differs between rule families. The screen-reader live region was rebuilt on
 every render instead of having its text updated, which stops most readers
 announcing it.
+
+Adding the second genre immediately found another. The contraction table was a
+plain object, so looking up `constructor` returned `Object.prototype.constructor`
+rather than nothing. Every use of that word was flagged, with
+`function Object() { [native code] }` offered as the fix, and accepting it would
+have pasted that string into the document. Wikipedia never says `constructor`,
+so one genre on its own could never have caught it, and the lookup tables are
+Maps now.
+
+Running the content script in a real page found four more, which the next
+section covers.
 
 ## What it checks
 
@@ -210,15 +227,16 @@ holds the key server-side instead of shipping it to the page.
   its panel for textareas, it just cannot underline them. Contenteditable
   fields, which is where most real writing happens, work everywhere the Custom
   Highlight API does.
-- The extension's routing between content script, service worker and offscreen
-  document is covered by tests against a stub of the Chrome APIs, and the offset
-  mapping over nested contenteditable markup is verified in a browser. It has
-  still never been loaded unpacked in a real Chrome, which is the one gap left.
-- The false-positive corpus is a single genre. Encyclopedic prose uses passive
-  voice and long sentences far more than an email does, so the rates for those
-  two rules are an upper bound rather than a typical reading. Tuning them
-  further against this corpus alone would make the checker worse for the writing
-  people actually bring to it.
+- The extension has still never been loaded unpacked in a real Chrome, which is
+  the one gap left. Its routing is covered against a stub of the Chrome APIs,
+  and the content script itself now runs in a real host page against a real
+  Harper worker, over a textarea, an input, a password field, a readonly field,
+  a non-editable div and a contenteditable with nested markup.
+- Both corpus genres are written for a reader who does not know the writer.
+  Neither is email, which is most of what people put through a checker, so the
+  passive and sentence-length rates are an upper bound rather than a typical
+  reading. Tuning those two rules harder against this corpus would make the
+  checker worse for the writing people actually bring to it.
 - Plagiarism detection is not here and will not be. It needs a licensed index of
   the web, which is not something a local checker can do.
 - Tone detection is a lexicon-and-feature model rather than a neural one. It is

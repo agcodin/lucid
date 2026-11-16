@@ -7,7 +7,7 @@ import type { Category } from '../types.js';
  * readability and redundancy. Engagement takes word choice. Delivery takes the
  * kinds that change how a sentence lands rather than whether it is right.
  */
-export const CATEGORY_OF_LINT_KIND: Record<string, Category> = {
+const KIND_TO_CATEGORY: Record<string, Category> = {
   Agreement: 'correctness',
   BoundaryError: 'correctness',
   Capitalization: 'correctness',
@@ -34,6 +34,14 @@ export const CATEGORY_OF_LINT_KIND: Record<string, Category> = {
   Miscellaneous: 'delivery',
 };
 
+/**
+ * A Map, so a lint kind that happens to name an Object.prototype property
+ * cannot resolve to an inherited value instead of falling back.
+ */
+export const CATEGORY_OF_LINT_KIND = new Map<string, Category>(
+  Object.entries(KIND_TO_CATEGORY) as [string, Category][],
+);
+
 export function categoryOfLintKind(kind: string): Category {
-  return CATEGORY_OF_LINT_KIND[kind] ?? 'correctness';
+  return CATEGORY_OF_LINT_KIND.get(kind) ?? 'correctness';
 }

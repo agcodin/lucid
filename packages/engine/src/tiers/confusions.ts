@@ -2,14 +2,21 @@ import type { Token } from '../segment.js';
 import type { PatternHit } from './patterns.js';
 
 /**
- * Missing-apostrophe contractions. Harper's dictionary accepts several of these
+ * Missing-apostrophe contractions.
+ *
+ * A Map rather than an object, because a plain object inherits from
+ * Object.prototype: looking up "constructor" returned the Object constructor,
+ * which is truthy, so every use of that very common word was flagged with
+ * "function Object() { [native code] }" offered as the fix.
+ *
+ * Harper's dictionary accepts several of these
  * as words in their own right ("wont", "cant", "shed"), so it leaves them
  * alone — but in running prose they are almost always the contraction. Only
  * forms with no common alternate reading are listed; "id", "ill", "hes",
  * "shes", "were", "well" and "lets" are deliberately absent — each is a common
  * word on its own, so flagging it would misfire more often than it helps.
  */
-const CONTRACTIONS: Record<string, string> = {
+const CONTRACTIONS = new Map<string, string>(Object.entries({
   wont: "won't", cant: "can't", dont: "don't", doesnt: "doesn't", didnt: "didn't",
   isnt: "isn't", arent: "aren't", wasnt: "wasn't", werent: "weren't",
   hasnt: "hasn't", havent: "haven't", hadnt: "hadn't",
@@ -22,7 +29,7 @@ const CONTRACTIONS: Record<string, string> = {
   thats: "that's", theres: "there's", heres: "here's",
   couldve: "could've", wouldve: "would've", shouldve: "should've",
   oclock: "o'clock", yall: "y'all",
-};
+}));
 
 /**
  * Words after which a bare "its" is nearly always the contraction "it's".
@@ -76,7 +83,7 @@ export function matchConfusions(tokens: Token[], hits: PatternHit[]): void {
     const next = tokens[i + 1];
     const word = token.lower;
 
-    const contraction = CONTRACTIONS[word];
+    const contraction = CONTRACTIONS.get(word);
     if (contraction !== undefined) {
       push(hits, token, `Missing apostrophe in "${token.text}"`, [matchCase(token.text, contraction)],
         'confusion:contraction',

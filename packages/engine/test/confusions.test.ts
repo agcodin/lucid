@@ -99,3 +99,25 @@ test('capitalization carries onto the replacement', () => {
   assert.equal(correctness('Wont work.')[0]?.fix, "Won't");
   assert.equal(correctness('Their is one.')[0]?.fix, 'There');
 });
+
+test('words that name Object.prototype members are not treated as lookups', () => {
+  // A plain object inherits from Object.prototype, so CONTRACTIONS["constructor"]
+  // returned the Object constructor: truthy, so "constructor" was flagged, with
+  // "function Object() { [native code] }" offered as the replacement.
+  for (const word of [
+    'constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf',
+    'propertyIsEnumerable', 'toLocaleString', 'prototype',
+  ]) {
+    assert.deepEqual(correctness(`The ${word} is documented here.`), [], word);
+  }
+});
+
+test('every suggested replacement is a plain string', () => {
+  const text = 'The constructor wont work. Its toString and valueOf are fine.';
+  for (const issue of toBlocks(text).flatMap((block) => runRules(block))) {
+    for (const replacement of issue.replacements) {
+      assert.equal(typeof replacement.text, 'string', `${issue.rule} offered a non-string`);
+      assert.ok(!replacement.text.includes('native code'), `${issue.rule} leaked a function`);
+    }
+  }
+});
