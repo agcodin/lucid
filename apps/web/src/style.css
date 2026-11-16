@@ -373,3 +373,19 @@ kbd {
 .legend-mark.delivery { text-decoration: underline dashed var(--delivery) 2px; }
 .legend-text { font-size: 11.5px; color: var(--faint); line-height: 1.4; }
 .legend-text strong { display: block; color: var(--text); font-size: 12.5px; font-weight: 580; }
+
+/* --- Rule toggles ------------------------------------------------------- */
+
+.rules { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 4px 20px; }
+.rules h3 {
+  grid-column: 1 / -1; margin: 0; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint);
+}
+.rules h3.spaced { margin-top: 12px; }
+
+.toggle { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; cursor: pointer; }
+.toggle.off { opacity: 0.4; cursor: not-allowed; }
+.toggle input { margin: 3px 0 0; accent-color: var(--accent); flex: none; }
+.toggle-text { display: grid; gap: 1px; min-width: 0; }
+.toggle-text strong { font-size: 13px; font-weight: 540; }
+.toggle-text span { font-size: 11.5px; color: var(--faint); }

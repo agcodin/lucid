@@ -4,6 +4,7 @@ import HarperWorker from '@lucid/engine/worker?worker';
 import { Editor } from './editor.js';
 import { Sidebar } from './sidebar.js';
 import { RewriteBar } from './rewrite.js';
+import { SettingsPanel, loadRuleConfig } from './settings.js';
 
 const SAMPLE = `In order to facilitate the utilization of our new onboarding system, we have made a decision to implement a change that will have an impact on the way in which the team operates on a daily basis.
 
@@ -24,6 +25,7 @@ app.innerHTML = `
     <div class="topbar-actions">
       <button id="fix-all" class="btn">Fix all spelling &amp; grammar</button>
       <button id="settings-toggle" class="btn ghost">Claude rewrites</button>
+      <button id="rules-toggle" class="btn ghost">Rules</button>
       <button id="reset" class="btn ghost" title="Replace the draft with the sample text">Reset</button>
     </div>
   </header>
@@ -36,6 +38,8 @@ app.innerHTML = `
       on your machine &mdash; spelling, grammar, clarity, tone and readability never leave the page.
     </p>
   </div>
+
+  <div id="rules" class="settings rules" hidden></div>
 
   <main class="layout">
     <section class="editor-pane">
@@ -178,6 +182,21 @@ try {
 } catch {
   // Private browsing with site data blocked. Rewrites simply stay unavailable.
 }
+
+// --- Which rules to show -------------------------------------------------
+
+engine.setRuleConfig(loadRuleConfig());
+
+new SettingsPanel(
+  document.querySelector<HTMLElement>('#rules')!,
+  loadRuleConfig(),
+  (config) => engine.setRuleConfig(config),
+);
+
+const rulesPanel = document.querySelector<HTMLElement>('#rules')!;
+document.querySelector('#rules-toggle')!.addEventListener('click', () => {
+  rulesPanel.hidden = !rulesPanel.hidden;
+});
 
 // --- Persistence ---------------------------------------------------------
 //

@@ -3,7 +3,8 @@ import { runRules } from './tiers/rules.js';
 import { analyzeReadability } from './tiers/readability.js';
 import { analyzeTone } from './tiers/tone.js';
 import { PHRASE_RULE_COUNT } from './tiers/matcher.js';
-import type { Block, Category, DocumentReport, Issue } from './types.js';
+import { DEFAULT_RULE_CONFIG } from './types.js';
+import type { Block, Category, DocumentReport, Issue, RuleConfig } from './types.js';
 import type { FromWorker, ToWorker } from './worker/protocol.js';
 
 export interface EngineStats {
@@ -70,6 +71,7 @@ export class Lucid {
   private text = '';
   private slots: Slot[] = [];
   private dismissed = new Set<string>();
+  private ruleConfig: RuleConfig = DEFAULT_RULE_CONFIG;
 
   private gen = 0;
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -232,15 +234,40 @@ export class Lucid {
   get issues(): Issue[] {
     const out: Issue[] = [];
     for (const slot of this.slots) {
-      for (const issue of slot.rules) if (!this.isDismissed(issue)) out.push(issue);
-      for (const issue of slot.harper) if (!this.isDismissed(issue)) out.push(issue);
+      for (const issue of slot.rules) if (this.shows(issue)) out.push(issue);
+      for (const issue of slot.harper) if (this.shows(issue)) out.push(issue);
     }
     out.sort((a, b) => a.start - b.start || a.end - b.end);
     return out;
   }
 
+  private shows(issue: Issue): boolean {
+    return !this.isDismissed(issue) && !this.isMuted(issue);
+  }
+
   private isDismissed(issue: Issue): boolean {
     return issue.dismissHash !== undefined && this.dismissed.has(issue.dismissHash);
+  }
+
+  /** True when the user has switched this issue's category or rule off. */
+  private isMuted(issue: Issue): boolean {
+    if (!this.ruleConfig.categories[issue.category]) return true;
+    return this.ruleConfig.disabledRules.some(
+      (disabled) => issue.rule === disabled || issue.rule.startsWith(`${disabled}/`),
+    );
+  }
+
+  /**
+   * Choose which suggestions to show. This filters issues already found rather
+   * than re-running the tiers, so a toggle is instant and no linting repeats.
+   */
+  setRuleConfig(config: RuleConfig): void {
+    this.ruleConfig = config;
+    this.emit();
+  }
+
+  getRuleConfig(): RuleConfig {
+    return this.ruleConfig;
   }
 
   /** Hide this issue, and future identical ones, for the rest of the session. */
@@ -264,9 +291,10 @@ export class Lucid {
     this.scheduleHarper(this.slots.map((slot) => slot.block));
   }
 
-  private countByCategory(): Record<Category, number> {
+  /** Count by category over an already-built list, so `issues` is walked once. */
+  private countByCategory(issues: Issue[] = this.issues): Record<Category, number> {
     const counts: Record<Category, number> = { correctness: 0, clarity: 0, engagement: 0, delivery: 0 };
-    for (const issue of this.issues) counts[issue.category]++;
+    for (const issue of issues) counts[issue.category]++;
     return counts;
   }
 
@@ -293,8 +321,11 @@ export class Lucid {
       this.emitFrame = undefined;
       this.emitTimer = undefined;
 
-      this.report.counts = this.countByCategory();
-      this.onUpdate({ issues: this.issues, report: this.report, stats: { ...this.stats } });
+      // Build the list once: the getter filters and sorts, which is not free
+      // on a long document, and emit runs on every frame that has changes.
+      const issues = this.issues;
+      this.report.counts = this.countByCategory(issues);
+      this.onUpdate({ issues, report: this.report, stats: { ...this.stats } });
     };
 
     this.emitFrame = requestFrame(flush);

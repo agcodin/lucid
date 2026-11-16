@@ -12,10 +12,11 @@ export { analyzeTone } from './tiers/tone.js';
 export { matchPhrases, PHRASE_RULE_COUNT } from './tiers/matcher.js';
 export { ALL_PHRASES, WORDY, FILLER, HEDGES, CLICHES } from './tiers/phrases.js';
 export { CATEGORY_OF_LINT_KIND, categoryOfLintKind } from './tiers/harper-kinds.js';
+export { DEFAULT_RULE_CONFIG } from './types.js';
 
 export type { RemoteProvider, TransformKind, TransformRequest, TransformVariant } from './providers/types.js';
 
 export type {
-  Block, Category, DocumentReport, Issue, Readability, Replacement, Tier, Tone, ToneLabel,
+  Block, Category, DocumentReport, Issue, Readability, Replacement, RuleConfig, Tier, Tone, ToneLabel,
 } from './types.js';
 export type { FromWorker, ToWorker, BlockRequest, Source } from './worker/protocol.js';

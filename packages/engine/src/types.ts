@@ -83,3 +83,23 @@ export interface DocumentReport {
   /** 0-100, weighted by issue density against document length. */
   score: number;
 }
+
+/**
+ * Which suggestions the user wants to see. Applied as a filter over issues
+ * already found, rather than by re-running the tiers, so a toggle takes effect
+ * immediately and costs nothing.
+ */
+export interface RuleConfig {
+  /** A category set to false hides all of its issues. */
+  categories: Record<Category, boolean>;
+  /**
+   * Individual rule ids to hide, as they appear on `Issue.rule`. A prefix also
+   * matches, so "clarity:wordy" silences the whole wordy table.
+   */
+  disabledRules: string[];
+}
+
+export const DEFAULT_RULE_CONFIG: RuleConfig = {
+  categories: { correctness: true, clarity: true, engagement: true, delivery: true },
+  disabledRules: [],
+};

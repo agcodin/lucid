@@ -183,3 +183,56 @@ test('updates are coalesced rather than emitted once per change', async () => {
   assert.ok(states.length < 25, `expected coalescing, got ${states.length} emits for 25 edits`);
   engine.dispose();
 });
+
+test('switching a category off hides its issues without re-linting', async () => {
+  const { engine, worker, states } = makeEngine();
+  engine.setText('In order to ship, we utilize it. I think that maybe it works.');
+  await settle();
+
+  const all = states.at(-1)!.issues;
+  assert.ok(all.some((issue) => issue.category === 'clarity'));
+  assert.ok(all.some((issue) => issue.category === 'delivery'));
+
+  const linted = worker.linted.length;
+  engine.setRuleConfig({
+    categories: { correctness: true, clarity: false, engagement: true, delivery: true },
+    disabledRules: [],
+  });
+  await settle();
+
+  const shown = states.at(-1)!.issues;
+  assert.ok(!shown.some((issue) => issue.category === 'clarity'), 'clarity should be hidden');
+  assert.ok(shown.some((issue) => issue.category === 'delivery'), 'delivery should remain');
+  assert.equal(worker.linted.length, linted, 'a toggle must not cause any re-linting');
+  engine.dispose();
+});
+
+test('a disabled rule prefix silences its whole table', async () => {
+  const { engine, states } = makeEngine();
+  engine.setText('In order to ship, we utilize a very large number of tools.');
+  await settle();
+  assert.ok(states.at(-1)!.issues.some((issue) => issue.rule.startsWith('clarity:wordy/')));
+
+  engine.setRuleConfig({
+    categories: { correctness: true, clarity: true, engagement: true, delivery: true },
+    disabledRules: ['clarity:wordy'],
+  });
+  await settle();
+  assert.ok(!states.at(-1)!.issues.some((issue) => issue.rule.startsWith('clarity:wordy/')));
+  engine.dispose();
+});
+
+test('category counts follow what is shown', async () => {
+  const { engine, states } = makeEngine();
+  engine.setText('In order to ship, we utilize it.');
+  await settle();
+  assert.ok(states.at(-1)!.report.counts.clarity > 0);
+
+  engine.setRuleConfig({
+    categories: { correctness: true, clarity: false, engagement: true, delivery: true },
+    disabledRules: [],
+  });
+  await settle();
+  assert.equal(states.at(-1)!.report.counts.clarity, 0);
+  engine.dispose();
+});
