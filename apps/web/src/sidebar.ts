@@ -63,14 +63,18 @@ export class Sidebar {
         </div>
       </div>
 
-      <div class="tabs" role="tablist">
+      <div class="tabs" role="tablist" aria-label="Filter suggestions by category">
         ${tab('all', 'All', state.issues.length, this.filter)}
         ${(Object.keys(CATEGORY_LABELS) as Category[])
           .map((category) => tab(category, CATEGORY_LABELS[category], report.counts[category], this.filter))
           .join('')}
       </div>
 
-      <div class="issues">
+      <p class="sr-only" role="status" aria-live="polite">
+        ${visible.length} ${visible.length === 1 ? 'suggestion' : 'suggestions'}${this.filter === 'all' ? '' : ` in ${CATEGORY_LABELS[this.filter as Category]}`}
+      </p>
+
+      <div class="issues" role="list">
         ${visible.length === 0 ? this.emptyState() : visible.map((issue) => this.card(issue)).join('')}
       </div>
 
@@ -145,7 +149,12 @@ export class Sidebar {
     const span = this.text.slice(issue.start, issue.end);
     const isSpelling = issue.rule === 'harper:Spelling';
     return `
-      <article class="card ${issue.category} ${issue.id === this.activeId ? 'active' : ''}" data-id="${escapeAttr(issue.id)}">
+      <article class="card ${issue.category} ${issue.id === this.activeId ? 'active' : ''}"
+        data-id="${escapeAttr(issue.id)}"
+        tabindex="0"
+        role="group"
+        aria-label="${escapeAttr(`${CATEGORY_LABELS[issue.category]}: ${issue.title}`)}"
+        ${issue.id === this.activeId ? 'aria-current="true"' : ''}>
         <header>
           <span class="dot"></span>
           <span class="card-title">${escapeHtml(issue.title)}</span>
@@ -211,6 +220,14 @@ export class Sidebar {
         this.handlers.onSelect(issue);
       });
 
+      // The card is focusable, so Enter and Space have to do what a click does.
+      card.addEventListener('keydown', (event) => {
+        if (event.target !== card) return; // Let the nested buttons handle their own keys.
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        this.handlers.onSelect(issue);
+      });
+
       card.querySelectorAll<HTMLElement>('.apply').forEach((button) => {
         button.addEventListener('click', () => {
           const index = Number(button.dataset.i);
@@ -242,8 +259,11 @@ function engineStatusClass(stats: EngineStats): string {
 }
 
 function tab(id: string, label: string, count: number, active: string): string {
-  return `<button class="tab ${id === active ? 'on' : ''}" data-filter="${id}" role="tab">
-    ${label}<span class="count">${count}</span>
+  const on = id === active;
+  return `<button class="tab ${on ? 'on' : ''}" data-filter="${id}" role="tab"
+    aria-selected="${on}"
+    aria-label="${label}, ${count} ${count === 1 ? 'suggestion' : 'suggestions'}">
+    ${label}<span class="count" aria-hidden="true">${count}</span>
   </button>`;
 }
 
