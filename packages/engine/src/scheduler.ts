@@ -262,9 +262,7 @@ export class Lucid {
   /** True when the user has switched this issue's category or rule off. */
   private isMuted(issue: Issue): boolean {
     if (!this.ruleConfig.categories[issue.category]) return true;
-    return this.ruleConfig.disabledRules.some(
-      (disabled) => issue.rule === disabled || issue.rule.startsWith(`${disabled}/`),
-    );
+    return this.ruleConfig.disabledRules.some((disabled) => matchesRule(issue.rule, disabled));
   }
 
   /**
@@ -451,6 +449,22 @@ export function applyReplacement(text: string, issue: Issue, replacementText: st
     text: text.slice(0, start) + insert + text.slice(end),
     cursor: start + insert.length,
   };
+}
+
+/**
+ * Whether `rule` is `disabled` or sits under it.
+ *
+ * Rule names separate their parts with either character, as in
+ * `clarity:wordy/in-order-to` and `clarity:sentence-long`, so a prefix has to
+ * accept both. Matching on the prefix alone would make `clarity:passive` also
+ * silence a future `clarity:passiveness`, and requiring a slash left the
+ * hyphenated families unreachable, which made two of the rule toggles inert.
+ */
+function matchesRule(rule: string, disabled: string): boolean {
+  if (rule === disabled) return true;
+  if (!rule.startsWith(disabled)) return false;
+  const boundary = rule[disabled.length];
+  return boundary === '/' || boundary === '-';
 }
 
 /** Index of the last non-space character before `offset`, or -1 if there is none. */

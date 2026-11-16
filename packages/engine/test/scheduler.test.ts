@@ -324,3 +324,39 @@ test('an empty or blank word is ignored', async () => {
   assert.deepEqual(engine.getDictionary(), []);
   engine.dispose();
 });
+
+test('a disabled rule matches both separators used in rule names', async () => {
+  const { engine, states } = makeEngine();
+  // clarity:wordy/... uses a slash, clarity:sentence-long uses a hyphen, and a
+  // toggle has to reach both or it silently does nothing.
+  engine.setText(`In order to ship, we utilize it. ${Array(34).fill('word').join(' ')}.`);
+  await settle();
+  assert.ok(states.at(-1)!.issues.some((issue) => issue.rule.startsWith('clarity:wordy/')));
+  assert.ok(states.at(-1)!.issues.some((issue) => issue.rule === 'clarity:sentence-long'));
+
+  engine.setRuleConfig({
+    categories: { correctness: true, clarity: true, engagement: true, delivery: true },
+    disabledRules: ['clarity:wordy', 'clarity:sentence'],
+  });
+  await settle();
+  const shown = states.at(-1)!.issues.map((issue) => issue.rule);
+  assert.ok(!shown.some((rule) => rule.startsWith('clarity:wordy')), `got [${shown.join(', ')}]`);
+  assert.ok(!shown.some((rule) => rule.startsWith('clarity:sentence')), `got [${shown.join(', ')}]`);
+  engine.dispose();
+});
+
+test('a disabled rule does not silence an unrelated rule sharing its prefix', async () => {
+  const { engine, states } = makeEngine();
+  engine.setText('There is a problem with the build.');
+  await settle();
+  assert.ok(states.at(-1)!.issues.some((issue) => issue.rule.startsWith('clarity:expletive')));
+
+  // "clarity:e" is not a rule family; it must not match clarity:expletive/there.
+  engine.setRuleConfig({
+    categories: { correctness: true, clarity: true, engagement: true, delivery: true },
+    disabledRules: ['clarity:e'],
+  });
+  await settle();
+  assert.ok(states.at(-1)!.issues.some((issue) => issue.rule.startsWith('clarity:expletive')));
+  engine.dispose();
+});

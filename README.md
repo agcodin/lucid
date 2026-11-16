@@ -32,24 +32,34 @@ browser, in a single offscreen document, rather than once per tab.
 
 ## Measured
 
-Taken with `npm run bench` and in-browser timings on an 11,800 word document
-carrying 2,800 live suggestions, which is well past anything you would write in
-one sitting.
+Timings are taken in the browser on an 11,800 word document carrying 2,800 live
+suggestions, which is well past anything you would write in one sitting. The
+figure that matters is the last row, because it is everything one keystroke
+costs on the main thread.
 
-| | naive | Lucid |
+| | before | now |
 |---|---|---|
 | Grammar pass per edit, 116k chars | 313ms | **1.5ms** |
-| Underline repaint, thousands of issues | 65ms | **1.4ms** |
-| Rules tier per keystroke | n/a | **0.5ms** |
-| Total main-thread work per keystroke (p95) | n/a | **2.4ms** |
+| Underline repaint, thousands of issues | 65ms | **0.8ms** |
+| Suggestion list rebuild | 170ms | **6ms** |
+| Selecting a suggestion | 170ms | **0ms** |
+| Whole keystroke, editing the last paragraph | 172ms | **1ms** |
+| Whole keystroke, editing the first paragraph | 172ms | **6ms** (15.4ms p95) |
 
-Both figures in the first column come from this same code, measured the same
-way, before the block cache and the offset index went in.
+Every figure in the before column is what this same code did at some point,
+measured the same way. The grammar pass improved with the block cache, the
+repaint with the offset index, and the list with windowing and event
+delegation.
 
 One frame at 60Hz is 16.7ms, so the whole per-keystroke path fits inside a
-single frame with room to spare. The grammar pass runs in a worker and never
-touches the main thread. The first edit after a cold load is slower while the
-JIT warms up, and settles within a second of typing.
+single frame even in the worst case. The grammar pass runs in a worker and
+never touches the main thread. The first edit after a cold load is slower while
+the JIT warms up, and settles within a second of typing.
+
+Measuring components separately is how the 170ms suggestion list went unnoticed
+for a while. The bench numbers covered the engine and the underlines and never
+touched the sidebar, which was rebuilding a card for every one of 2,800 issues
+on every update. The last two rows exist so that cannot happen again.
 
 ## How accurate is it
 
@@ -86,6 +96,14 @@ That harness found five real bugs that reading the code had not.
 Two more came out of the test suite. `syllables('beautiful')` returned 5 because
 vowel runs were capped at two characters, and `analyzeTone` labelled any
 four-word sentence `direct` by reading tone off its length alone.
+
+A review pass over the whole change found three more. The suggestion list had no
+cap, which is the 170ms above. Two of the seven rule toggles were inert, because
+the filter accepted `clarity:wordy/in-order-to` as a match for `clarity:wordy`
+but not `clarity:sentence-long` for `clarity:sentence`, and the separator
+differs between rule families. The screen-reader live region was rebuilt on
+every render instead of having its text updated, which stops most readers
+announcing it.
 
 ## What it checks
 

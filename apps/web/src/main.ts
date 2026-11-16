@@ -243,7 +243,10 @@ document.querySelector('#reset')!.addEventListener('click', () => {
 editor.setText(loadDraft() ?? SAMPLE);
 editor.focus();
 
-/** Move the selection to the next issue after the caret, wrapping at the end. */
+/**
+ * Select the issue after the one currently selected, wrapping at the end. With
+ * nothing selected it starts at the first issue in the document.
+ */
 function gotoNextIssue(): void {
   if (!latest || latest.issues.length === 0) return;
   const current = latest.issues.findIndex((issue) => issue.id === activeId);
