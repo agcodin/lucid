@@ -52,6 +52,26 @@ const INJECTIONS: Injection[] = [
   { type: 'wordiness (in order to)', pattern: /\bto (\w+) the\b/gi, break: (m) => `in order to ${m[1]} the` },
   { type: 'wordiness (utilize)', pattern: /\buses?\b/gi, break: () => 'utilizes' },
   { type: 'filler (very)', pattern: /\bis (\w{5,})\b/gi, break: (m) => `is very ${m[1]}` },
+
+  // Homophone pairs, which no spell checker can catch on the word alone.
+  { type: 'effect -> affect', pattern: /\bthe effect\b/gi, break: () => 'the affect' },
+  { type: 'affect -> effect', pattern: /\b(can|may|will|would) affect\b/gi, break: (m) => `${m[1]} effect` },
+  { type: 'principle -> principal', pattern: /\bprinciples?\b/gi, break: (m) => m[0].replace(/ple/i, 'pal') },
+  { type: 'complement -> compliment', pattern: /\bcomplements? each other\b/gi, break: (m) => m[0].replace(/ple/i, 'pli') },
+  { type: 'led -> lead', pattern: /\b(has|have|had|which) led\b/gi, break: (m) => `${m[1]} lead` },
+  { type: 'past -> passed', pattern: /\bthe past\b/gi, break: () => 'the passed' },
+  { type: 'except -> accept', pattern: /\bexcept\b/gi, break: () => 'accept' },
+
+  // Mechanics.
+  { type: 'comma splice', pattern: /\b(\w+)\. (The|This|It|These|They) \b/g, break: (m) => `${m[1]}, ${m[2].toLowerCase()} ` },
+  { type: 'lowercase sentence start', pattern: /\. ([A-Z])(\w+)/g, break: (m) => `. ${m[1].toLowerCase()}${m[2]}` },
+  { type: 'repeated punctuation', pattern: /\. /g, break: () => '.. ' },
+  { type: 'plural apostrophe', pattern: /\b(19|20)(\d0)s\b/g, break: (m) => `${m[1]}${m[2]}'s` },
+  { type: 'redundant acronym', pattern: /\bthe URL\b/g, break: () => 'the URL address' },
+  { type: 'nonstandard word', pattern: /\bregardless\b/gi, break: () => 'irregardless' },
+  { type: 'alot', pattern: /\ba lot\b/gi, break: () => 'alot' },
+  { type: 'fewer -> less', pattern: /\bfewer (?!than)(\w+)\b/gi, break: (m) => `less ${m[1]}` },
+  { type: 'me -> I (object)', pattern: /\bbetween (\w+) and (?:me|us)\b/gi, break: (m) => `between ${m[1]} and I` },
 ];
 
 /** One trial: a sentence, the span that was broken, and which type broke it. */

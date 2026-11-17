@@ -83,12 +83,13 @@ Silence is only half the question, because a checker that finds nothing scores
 perfectly on it. `npm run recall` answers the other half. It takes clean
 sentences from the same corpus, puts a known mistake into one at a known
 position, and asks whether anything fires over that span and whether the
-suggested fix puts the original back. Twenty kinds of mistake, 636 of them.
+suggested fix puts the original back. Thirty-three kinds of mistake, 859 of
+them, covering homophones, agreement, mechanics, spelling, usage and wordiness.
 
 | | |
 |---|---|
-| Errors caught | **100%** |
-| Caught with the right fix | **96%** |
+| Errors caught | **97%** |
+| Caught with the right fix | **85%** |
 | False positives on 192,381 words of edited prose | **0** |
 
 The fix is applied through the same code the editor uses, so the figure is what
@@ -112,6 +113,28 @@ That last one introduced a duplicate: `They is` drew a card from both tiers for
 the same mistake. Overlapping correctness findings are deduplicated, which the
 other categories are deliberately spared, since a wordy phrase inside an
 over-long sentence is two useful observations rather than one repeated.
+
+Widening the harness to homophones and mechanics found six more things Harper
+does not cover at all, now rules of their own. `has lead to` wants `led`, `in
+the passed` wants `past`, `the principals of design` wants `principles`, `the
+URL address` repeats what the acronym already says, `less items` wants `fewer`,
+and `irregardless` is not a word.
+
+Each of those is gated on the construction rather than the word, because both
+spellings are real. Two attempts at a wider gate were measured and reverted.
+Allowing an adjective between `less` and its noun caught `less total bits` but
+also flagged `less developed countries`, where `less` modifies the adjective and
+is correct. Accepting any determiner before `principal of` caught `the principal
+of uptake` but also flagged `she is the principal of the school`. One wrong
+correctness flag costs more than one missed suggestion, so both went back.
+
+What it still misses is worth naming. Nothing offers a fix for a comma splice,
+because choosing between a period, a semicolon and a conjunction needs to know
+which clauses are independent, and the heuristics for that flag correct
+sentences after an introductory clause. `compliment` and `complement` are only
+told apart in the one idiom where they go `each other`, since the rest needs to
+know what is being praised. And a singular `the principal of` is left alone for
+the reason above.
 
 That harness found five real bugs that reading the code had not.
 
