@@ -128,10 +128,30 @@ is correct. Accepting any determiner before `principal of` caught `the principal
 of uptake` but also flagged `she is the principal of the school`. One wrong
 correctness flag costs more than one missed suggestion, so both went back.
 
-What it still misses is worth naming. Nothing offers a fix for a comma splice,
-because choosing between a period, a semicolon and a conjunction needs to know
-which clauses are independent, and the heuristics for that flag correct
-sentences after an introductory clause. `compliment` and `complement` are only
+Comma splices came out the same way, and are worth a paragraph of their own
+because the measurement and the shipped rule disagree. The rule fires only when
+the first half starts the sentence, runs under ten words, and holds no
+preposition or subordinator, and when the half after the comma is a pronoun or
+a short noun phrase on an auxiliary. That covers `the meeting ran long, I was
+late for dinner`, which is the splice people actually type, with no false
+positives on either genre. It covers none of the recall harness's 60 splices,
+because those are built by gluing two encyclopedia sentences together, and the
+first half of one of those is long enough to contain a subordinate clause that
+the rule cannot tell from the main one. Five looser versions were measured and
+thrown away, the last of them trading five of those 60 for thirteen false
+positives. The rule stays narrow, and the 72% that the harness reports as caught
+is still Harper noticing the lowercase word rather than anything naming the
+splice.
+
+Chasing that rule turned up a sentence splitter bug worth more than the rule
+itself. A single letter before a period was treated as an initial, as in
+`J. Smith`, which made the `s` of `the 1980s.` one too, so `Wages rose through
+the 1980s. Between 1813 and 1913 they fell.` was one sentence. Anything written
+with a decade, a plural year or a figure in it was being linted as a run-on,
+which is a silent failure rather than a visible one: no rule fires wrongly, they
+just see the wrong text.
+
+What it still misses is worth naming. `compliment` and `complement` are only
 told apart in the one idiom where they go `each other`, since the rest needs to
 know what is being praised. And a singular `the principal of` is left alone for
 the reason above.

@@ -1,6 +1,7 @@
 import { tokenize, type Sentence, type Token } from '../segment.js';
 import { matchConfusions } from './confusions.js';
 import { matchUsage } from './usage.js';
+import { matchSplices } from './splice.js';
 import type { Category } from '../types.js';
 
 export interface PatternHit {
@@ -62,6 +63,7 @@ export function matchPatterns(sentence: Sentence, index: number, all: Sentence[]
 
   matchConfusions(tokens, hits);
   matchUsage(tokens, hits);
+  matchSplices(text, tokens, hits);
   passiveVoice(text, tokens, hits);
   expletiveOpening(text, tokens, hits);
   longSentence(text, tokens, hits);

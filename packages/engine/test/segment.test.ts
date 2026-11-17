@@ -95,3 +95,13 @@ test('capitalized abbreviations are still respected', () => {
 test('lowercase prose still splits, so casual writing is not one long sentence', () => {
   assert.equal(toSentences('hey. whats up. im fine').length, 3);
 });
+
+test('toSentences ends a sentence after a decade', () => {
+  // The plural "s" on "1980s" was read as an initial, which glued this pair
+  // into one sentence and hid every rule that works on sentence boundaries.
+  const sentences = toSentences('Wages rose from the 1950s to the 1980s. Between 1813 and 1913, they fell.');
+  assert.equal(sentences.length, 2);
+  assert.equal(sentences[1]!.text, 'Between 1813 and 1913, they fell.');
+  assert.equal(toSentences('We met at 9 a.m. and left.').length, 1);
+  assert.equal(toSentences('He studied in the U.S. and stayed.').length, 1);
+});

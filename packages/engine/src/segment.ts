@@ -116,7 +116,16 @@ function closesSentence(text: string, dot: number): boolean {
   const word = original.toLowerCase();
 
   // Single letters are initials ("J. Smith") or acronyms spelled with periods.
-  if (word.length === 1) return false;
+  // The plural "s" on a decade is not one of those, and treating it as an
+  // initial glued "the 1980s. Between 1813..." into a single sentence.
+  if (word.length === 1) {
+    const before = text[wordStart - 1] ?? '';
+    // An initial is capitalized ("J. Smith"), and a letter inside an acronym
+    // follows a period of its own ("a.m.", "U.S."). A letter after a digit is
+    // neither, so "the 1980s." ends its sentence.
+    if (before !== '.' && /\d/.test(before)) return true;
+    return false;
+  }
   if (word.length === 0) return true;
 
   const capitalized = original[0] !== original[0]!.toLowerCase();
